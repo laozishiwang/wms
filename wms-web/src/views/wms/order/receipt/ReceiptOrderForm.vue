@@ -118,25 +118,46 @@
             <el-input v-model="scope.row.batchNo" maxlength="64" placeholder="留空为无批次库存" />
           </template>
         </el-table-column>
-        <el-table-column label="托盘号" width="150"><template #default="scope"><el-input v-model="scope.row.palletNo" maxlength="64" /></template></el-table-column>
-        <el-table-column label="箱号" width="150"><template #default="scope"><el-input v-model="scope.row.boxNo" maxlength="64" /></template></el-table-column>
-        <el-table-column label="卷号" width="150"><template #default="scope"><el-input v-model="scope.row.rollNo" maxlength="64" /></template></el-table-column>
-        <el-table-column label="净长(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.netLength" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="毛长(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.grossLength" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="净重(kg)" width="150"><template #default="scope"><el-input-number v-model="scope.row.netWeight" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="毛重(kg)" width="150"><template #default="scope"><el-input-number v-model="scope.row.grossWeight" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="长(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.length" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="宽(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.width" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="高(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.height" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="销售价(元)" width="150"><template #default="scope"><el-input-number v-model="scope.row.salesPrice" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
-        <el-table-column label="生产日期" width="165">
+        <el-table-column label="托盘号 / 箱号 / 卷号" width="180">
           <template #default="scope">
-            <el-date-picker v-model="scope.row.productionDate" type="date" value-format="YYYY-MM-DD HH:mm:ss" placeholder="生产日期" class="!w-1/1" />
+            <div class="receipt-field-stack">
+              <el-input v-model="scope.row.palletNo" maxlength="64" placeholder="托盘号" aria-label="托盘号" />
+              <el-input v-model="scope.row.boxNo" maxlength="64" placeholder="箱号" aria-label="箱号" />
+              <el-input v-model="scope.row.rollNo" maxlength="64" placeholder="卷号" aria-label="卷号" />
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="到期日期" width="165">
+        <el-table-column label="净长 / 毛长 (cm)" width="160">
           <template #default="scope">
-            <el-date-picker v-model="scope.row.expirationDate" type="date" value-format="YYYY-MM-DD HH:mm:ss" placeholder="到期日期" class="!w-1/1" />
+            <div class="receipt-field-stack">
+              <el-input-number v-model="scope.row.netLength" :controls="false" :min="0" class="!w-1/1" placeholder="净长" aria-label="净长" />
+              <el-input-number v-model="scope.row.grossLength" :controls="false" :min="0" class="!w-1/1" placeholder="毛长" aria-label="毛长" />
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="净重 / 毛重 (kg)" width="160">
+          <template #default="scope">
+            <div class="receipt-field-stack">
+              <el-input-number v-model="scope.row.netWeight" :controls="false" :min="0" class="!w-1/1" placeholder="净重" aria-label="净重" />
+              <el-input-number v-model="scope.row.grossWeight" :controls="false" :min="0" class="!w-1/1" placeholder="毛重" aria-label="毛重" />
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="长 / 宽 / 高 (cm)" width="150">
+          <template #default="scope">
+            <div class="receipt-field-stack">
+              <el-input-number v-model="scope.row.length" :controls="false" :min="0" class="!w-1/1" placeholder="长" aria-label="长" />
+              <el-input-number v-model="scope.row.width" :controls="false" :min="0" class="!w-1/1" placeholder="宽" aria-label="宽" />
+              <el-input-number v-model="scope.row.height" :controls="false" :min="0" class="!w-1/1" placeholder="高" aria-label="高" />
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="生产 / 到期日期" width="180">
+          <template #default="scope">
+            <div class="receipt-field-stack">
+              <el-date-picker v-model="scope.row.productionDate" type="date" value-format="YYYY-MM-DD HH:mm:ss" placeholder="生产日期" aria-label="生产日期" class="!w-1/1" />
+              <el-date-picker v-model="scope.row.expirationDate" type="date" value-format="YYYY-MM-DD HH:mm:ss" placeholder="到期日期" aria-label="到期日期" class="!w-1/1" />
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="入库数量" prop="quantity" width="160">
@@ -152,17 +173,21 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="成本价(元)" prop="price" width="160">
+        <el-table-column label="成本价 / 销售价 (元)" prop="price" width="170">
           <template #default="scope">
+            <div class="receipt-field-stack">
             <el-input-number
               v-model="scope.row.price"
               :controls="false"
               :min="0"
               :precision="PRICE_PRECISION"
               class="!w-1/1"
-              placeholder="单价"
+              placeholder="成本价"
+              aria-label="成本价"
               @change="handleDetailPriceChange(scope.row)"
             />
+            <el-input-number v-model="scope.row.salesPrice" :controls="false" :min="0" class="!w-1/1" placeholder="销售价" aria-label="销售价" />
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="金额(元)" prop="totalPrice" width="160">
@@ -178,7 +203,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column align="center" label="操作" width="120">
+        <el-table-column align="center" fixed="right" label="操作" width="120">
           <template #default="scope">
             <el-button link type="primary" @click="copyDetail(scope.row)">复制</el-button>
             <el-button link type="danger" @click="handleDeleteDetail(scope.$index)">删除</el-button>
@@ -593,3 +618,7 @@ const resetForm = () => {
   nextTick(() => formRef.value?.clearValidate())
 }
 </script>
+
+<style scoped>
+.receipt-field-stack { display: grid; gap: 5px; }
+</style>
