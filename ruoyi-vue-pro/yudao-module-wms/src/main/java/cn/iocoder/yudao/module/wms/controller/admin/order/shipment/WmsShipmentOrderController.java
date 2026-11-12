@@ -70,6 +70,18 @@ public class WmsShipmentOrderController {
     @Resource
     private AdminUserApi adminUserApi;
 
+    @GetMapping("/import-template")
+    @PreAuthorize("@ss.hasPermission('wms:shipment-order:create')")
+    public void shipmentImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.write(response, "出库明细导入模板.xls", "出库明细", cn.iocoder.yudao.module.wms.controller.admin.order.shipment.vo.order.WmsShipmentImportRow.class, Collections.emptyList());
+    }
+
+    @PostMapping("/import-parse")
+    @PreAuthorize("@ss.hasPermission('wms:shipment-order:create')")
+    public CommonResult<List<cn.iocoder.yudao.module.wms.controller.admin.order.shipment.vo.order.WmsShipmentImportRow>> parseShipmentImport(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws IOException {
+        return success(ExcelUtils.read(file, cn.iocoder.yudao.module.wms.controller.admin.order.shipment.vo.order.WmsShipmentImportRow.class));
+    }
+
     @PostMapping("/create")
     @Operation(summary = "创建出库单")
     @PreAuthorize("@ss.hasPermission('wms:shipment-order:create')")

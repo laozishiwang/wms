@@ -221,11 +221,11 @@
       <el-table-column type="expand" width="48">
         <template #default="scope">
           <el-table :data="detailMap[scope.row.id] || []" border>
-            <el-table-column label="商品信息" min-width="220">
+            <el-table-column label="物品信息" min-width="220">
               <template #default="detailScope">
                 <div>{{ detailScope.row.itemName || '-' }}</div>
                 <div v-if="detailScope.row.itemCode" class="text-12px text-gray-500">
-                  商品编号：{{ detailScope.row.itemCode }}
+                  物品编号：{{ detailScope.row.itemCode }}
                 </div>
               </template>
             </el-table-column>

@@ -56,13 +56,13 @@
         </el-descriptions-item>
       </el-descriptions>
 
-      <div class="mb-16px mt-24px text-18px font-bold">商品明细</div>
+      <div class="mb-16px mt-24px text-18px font-bold">物品明细</div>
       <el-table :data="detailRows" :summary-method="getSummaries" border show-summary>
-        <el-table-column label="商品名称" min-width="180" prop="itemName">
+        <el-table-column label="物品名称" min-width="180" prop="itemName">
           <template #default="scope">
             <div>{{ scope.row.itemName || '-' }}</div>
             <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
-              商品编号：{{ scope.row.itemCode }}
+              物品编号：{{ scope.row.itemCode }}
             </div>
           </template>
         </el-table-column>

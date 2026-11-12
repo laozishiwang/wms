@@ -16,21 +16,21 @@
         class="-mb-15px"
         label-width="80px"
       >
-        <el-form-item label="商品名称" prop="itemName">
+        <el-form-item label="物品名称" prop="itemName">
           <el-input
             v-model="queryParams.itemName"
             class="!w-240px"
             clearable
-            placeholder="请输入商品名称"
+            placeholder="请输入物品名称"
             @keyup.enter="handleQuery"
           />
         </el-form-item>
-        <el-form-item label="商品编号" prop="itemCode">
+        <el-form-item label="物品编号" prop="itemCode">
           <el-input
             v-model="queryParams.itemCode"
             class="!w-240px"
             clearable
-            placeholder="请输入商品编号"
+            placeholder="请输入物品编号"
             @keyup.enter="handleQuery"
           />
         </el-form-item>
@@ -85,11 +85,11 @@
           type="selection"
           width="50"
         />
-        <el-table-column label="商品信息" min-width="220">
+        <el-table-column label="物品信息" min-width="220">
           <template #default="{ row }">
             <div>{{ row.itemName || '-' }}</div>
             <div v-if="row.itemCode" class="text-12px text-gray-500">
-              商品编号：{{ row.itemCode }}
+              物品编号：{{ row.itemCode }}
             </div>
           </template>
         </el-table-column>

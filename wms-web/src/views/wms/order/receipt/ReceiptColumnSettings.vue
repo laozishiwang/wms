@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ modelValue: string[]; options: { key: string; label: string }[] }>()
+const props = withDefaults(defineProps<{ modelValue: string[]; options: { key: string; label: string }[]; title?: string }>(), { title: '入库明细字段排序' })
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
 const visible = ref(false)
 const draft = ref<string[]>([])
@@ -14,7 +14,7 @@ defineExpose({ open })
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="入库明细字段排序" width="min(460px, 94vw)" append-to-body>
+  <el-dialog v-model="visible" :title="title" width="min(460px, 94vw)" append-to-body>
     <p>使用上下按钮调整顺序。物品信息和操作列固定在两侧。</p>
     <div class="order-list">
     <div v-for="(key, index) in draft" :key="key" class="order-row">

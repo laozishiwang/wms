@@ -42,7 +42,7 @@
       <table class="w-full border-collapse text-13px">
         <thead>
           <tr>
-            <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">商品信息</th>
+            <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">物品信息</th>
             <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">规格信息</th>
             <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">数量</th>
             <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">单价(元)</th>

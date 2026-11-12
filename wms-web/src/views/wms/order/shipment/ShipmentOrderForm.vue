@@ -65,7 +65,7 @@
         </el-col>
       </el-row>
 
-      <div class="mb-12px flex items-center justify-between">
+      <div class="mb-12px flex flex-wrap items-center gap-12px">
         <span class="text-14px font-bold">出库明细</span>
         <el-tooltip content="请先选择仓库" :disabled="!!formData.warehouseId" placement="top">
           <span>
@@ -76,27 +76,32 @@
               @click="handleAddDetail"
             >
               <Icon class="mr-5px" icon="ep:plus" />
-              添加商品
+              添加物品
             </el-button>
           </span>
         </el-tooltip>
+        <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
+        <ShipmentImport :warehouse-id="formData.warehouseId" @imported="handleImported" />
+        <span class="text-12px text-gray-500">模板以规格、库位和批次匹配库存</span>
       </div>
       <el-table
+        :key="columnOrder.join('|')"
         :data="formData.details"
         :summary-method="getDetailSummaries"
         border
-        empty-text="暂无商品明细"
+        empty-text="暂无物品明细"
         show-summary
       >
-        <el-table-column label="商品信息" min-width="220">
+        <el-table-column label="物品信息" fixed="left" min-width="220">
           <template #default="scope">
             <div>{{ scope.row.itemName || '-' }}</div>
             <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
-              商品编号：{{ scope.row.itemCode }}
+              物品编号：{{ scope.row.itemCode }}
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="规格信息" min-width="220">
+        <template v-for="column in columnOrder" :key="column">
+        <el-table-column v-if="column === 'sku'" label="规格信息" min-width="220">
           <template #default="scope">
             <div>{{ scope.row.skuName || '-' }}</div>
             <div v-if="scope.row.skuCode" class="text-12px text-gray-500">
@@ -104,23 +109,23 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="序列号" width="130"><template #default="scope"><SerialEditor v-model="scope.row.serialNos" /></template></el-table-column>
-        <el-table-column label="出库库位" min-width="200">
+        <el-table-column v-if="column === 'serial'" label="序列号" width="130"><template #default="scope"><SerialEditor v-model="scope.row.serialNos" /></template></el-table-column>
+        <el-table-column v-if="column === 'location'" label="出库库位" min-width="200">
           <template #default="scope">
             <BatchLocationSelect v-model="scope.row.locationId" :warehouse-id="formData.warehouseId" :sku-id="scope.row.skuId" :batch-no="scope.row.batchNo" />
           </template>
         </el-table-column>
-        <el-table-column label="批次号" min-width="160">
+        <el-table-column v-if="column === 'batch'" label="批次号" min-width="160">
           <template #default="scope">
             <BatchSelect v-model="scope.row.batchNo" :warehouse-id="formData.warehouseId" :sku-id="scope.row.skuId" @change="scope.row.locationId = undefined" />
           </template>
         </el-table-column>
-        <el-table-column align="right" label="可用库存" width="120">
+        <el-table-column v-if="column === 'available'" align="right" label="可用库存" width="120">
           <template #default="scope">
             {{ formatQuantity(scope.row.availableQuantity) || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="出库数量" prop="quantity" width="160">
+        <el-table-column v-if="column === 'quantity'" label="出库数量" prop="quantity" width="160">
           <template #default="scope">
             <el-input-number
               v-model="scope.row.quantity"
@@ -133,7 +138,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="单价(元)" prop="price" width="160">
+        <el-table-column v-if="column === 'price'" label="单价(元)" prop="price" width="160">
           <template #default="scope">
             <el-input-number
               v-model="scope.row.price"
@@ -146,7 +151,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="金额(元)" prop="totalPrice" width="160">
+        <el-table-column v-if="column === 'total'" label="金额(元)" prop="totalPrice" width="160">
           <template #default="scope">
             <el-input-number
               v-model="scope.row.totalPrice"
@@ -159,13 +164,15 @@
             />
           </template>
         </el-table-column>
-        <el-table-column align="center" label="操作" width="120">
+        </template>
+        <el-table-column align="center" fixed="right" label="操作" width="120">
           <template #default="scope">
             <el-button link type="primary" @click="copyDetail(scope.row)">复制</el-button>
             <el-button link type="danger" @click="handleDeleteDetail(scope.$index)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <ReceiptColumnSettings ref="columnSettingsRef" v-model="columnOrder" :options="columnOptions" title="出库明细字段排序" />
       <InventorySelect
         ref="inventorySelectRef"
         :warehouse-id="formData.warehouseId"
@@ -214,6 +221,9 @@
 import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
+import ReceiptColumnSettings from '@/views/wms/order/receipt/ReceiptColumnSettings.vue'
+import ShipmentImport from './ShipmentImport.vue'
+import { getCurrentUserId, getTenantId } from '@/utils/auth'
 import { FormRules } from 'element-plus'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { ShipmentOrderApi, ShipmentOrderVO } from '@/api/wms/order/shipment'
@@ -268,6 +278,24 @@ const formRules = reactive<FormRules>({
 })
 const formRef = ref() // 表单 Ref
 const inventorySelectRef = ref() // 库存选择弹窗 Ref
+const columnSettingsRef = ref<InstanceType<typeof ReceiptColumnSettings>>()
+const columnOptions = [
+  { key: 'sku', label: '规格信息' }, { key: 'serial', label: '序列号' },
+  { key: 'location', label: '出库库位' }, { key: 'batch', label: '批次号' },
+  { key: 'available', label: '可用库存' }, { key: 'quantity', label: '出库数量' },
+  { key: 'price', label: '单价' }, { key: 'total', label: '金额' }
+]
+const columnOrder = ref(columnOptions.map((item) => item.key))
+const columnStorageKey = () => `wms-shipment-columns:${getTenantId() || 0}:${getCurrentUserId()}`
+const loadColumnOrder = () => {
+  const defaults = columnOptions.map((item) => item.key)
+  try {
+    const stored = JSON.parse(localStorage.getItem(columnStorageKey()) || '[]')
+    const valid = Array.isArray(stored) ? stored.filter((key): key is string => defaults.includes(key)) : []
+    columnOrder.value = [...new Set(valid), ...defaults.filter((key) => !valid.includes(key))]
+  } catch { columnOrder.value = defaults }
+}
+watch(columnOrder, (value) => localStorage.setItem(columnStorageKey(), JSON.stringify(value)))
 
 const isPrepareOrder = computed(
   () =>
@@ -283,6 +311,7 @@ const isSavedPrepareOrder = computed(
 
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
+  loadColumnOrder()
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   dialogVisible.value = true
   dialogTitle.value = t('action.' + type)
@@ -332,7 +361,11 @@ function normalizeDetails(details: ShipmentOrderDetailVO[]) {
   }))
 }
 
-/** 添加商品 */
+const handleImported = (rows: ShipmentOrderDetailVO[]) => {
+  formData.value.details = [...(formData.value.details || []), ...rows]
+}
+
+/** 添加物品 */
 const handleAddDetail = () => {
   inventorySelectRef.value?.open(getSelectedInventoryKeys())
 }
@@ -428,7 +461,7 @@ const validateDetails = (required: boolean) => {
   for (let i = 0; i < formData.value.details.length; i++) {
     const detail = formData.value.details[i]
     if (!detail.skuId) {
-      message.error(`第 ${i + 1} 行明细请选择商品规格`)
+      message.error(`第 ${i + 1} 行明细请选择物品规格`)
       return false
     }
     if (!detail.quantity || detail.quantity <= 0) {

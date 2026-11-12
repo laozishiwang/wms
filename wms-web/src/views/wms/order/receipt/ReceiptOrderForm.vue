@@ -16,7 +16,7 @@
         </el-col>
         <el-col :span="8">
           <el-form-item label="入库类型" prop="type">
-            <el-select v-model="formData.type" class="flex-1" placeholder="请选择入库类型">
+            <el-select v-model="formData.type" class="w-1/1" placeholder="请选择入库类型">
               <el-option
                 v-for="dict in getIntDictOptions(DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)"
                 :key="dict.value"
@@ -24,7 +24,6 @@
                 :value="dict.value"
               />
             </el-select>
-            <el-button v-hasPermi="['system:dict:query']" link type="primary" class="ml-8px" @click="typeManagerRef?.open()">维护类型</el-button>
           </el-form-item>
         </el-col>
         <el-col :span="8">
@@ -217,7 +216,6 @@
         </el-table-column>
       </el-table>
       <ItemSkuSelect ref="skuSelectRef" @change="handleSelectSku" />
-      <ReceiptTypeManager ref="typeManagerRef" />
       <ReceiptColumnSettings ref="columnSettingsRef" v-model="columnOrder" :options="columnOptions" />
     </el-form>
     <template #footer>
@@ -264,10 +262,8 @@ import download from '@/utils/download'
 import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
-import ReceiptTypeManager from './ReceiptTypeManager.vue'
 import ReceiptColumnSettings from './ReceiptColumnSettings.vue'
 import { getCurrentUserId, getTenantId } from '@/utils/auth'
-const typeManagerRef = ref<InstanceType<typeof ReceiptTypeManager>>()
 const columnSettingsRef = ref<InstanceType<typeof ReceiptColumnSettings>>()
 const columnOptions = [
   { key: 'sku', label: '规格信息' }, { key: 'serial', label: '序列号' },

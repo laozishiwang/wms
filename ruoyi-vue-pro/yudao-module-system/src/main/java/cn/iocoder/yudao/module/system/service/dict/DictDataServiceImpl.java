@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.dict.core.DictFrameworkUtils;
 import cn.iocoder.yudao.module.system.controller.admin.dict.vo.data.DictDataPageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dict.vo.data.DictDataSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dict.DictDataDO;
@@ -72,6 +73,7 @@ public class DictDataServiceImpl implements DictDataService {
         // 插入字典类型
         DictDataDO dictData = BeanUtils.toBean(createReqVO, DictDataDO.class);
         dictDataMapper.insert(dictData);
+        DictFrameworkUtils.clearCache();
         return dictData.getId();
     }
 
@@ -87,6 +89,7 @@ public class DictDataServiceImpl implements DictDataService {
         // 更新字典类型
         DictDataDO updateObj = BeanUtils.toBean(updateReqVO, DictDataDO.class);
         dictDataMapper.updateById(updateObj);
+        DictFrameworkUtils.clearCache();
     }
 
     @Override
@@ -96,11 +99,13 @@ public class DictDataServiceImpl implements DictDataService {
 
         // 删除字典数据
         dictDataMapper.deleteById(id);
+        DictFrameworkUtils.clearCache();
     }
 
     @Override
     public void deleteDictDataList(List<Long> ids) {
         dictDataMapper.deleteByIds(ids);
+        DictFrameworkUtils.clearCache();
     }
 
     @Override
