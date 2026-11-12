@@ -16,7 +16,7 @@
         </el-col>
         <el-col :span="8">
           <el-form-item label="入库类型" prop="type">
-            <el-select v-model="formData.type" class="w-1/1" placeholder="请选择入库类型">
+            <el-select v-model="formData.type" class="flex-1" placeholder="请选择入库类型">
               <el-option
                 v-for="dict in getIntDictOptions(DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)"
                 :key="dict.value"
@@ -24,6 +24,7 @@
                 :value="dict.value"
               />
             </el-select>
+            <el-button v-hasPermi="['system:dict:query']" link type="primary" class="ml-8px" @click="typeManagerRef?.open()">维护类型</el-button>
           </el-form-item>
         </el-col>
         <el-col :span="8">
@@ -65,7 +66,7 @@
         </el-col>
       </el-row>
 
-      <div class="mb-12px flex items-center justify-between">
+      <div class="mb-12px flex flex-wrap items-center gap-12px">
         <span class="text-14px font-bold">入库明细</span>
         <el-tooltip content="请先选择仓库" :disabled="!!formData.warehouseId" placement="top">
           <span>
@@ -76,26 +77,27 @@
               @click="handleAddDetail"
             >
               <Icon class="mr-5px" icon="ep:plus" />
-              添加商品
+              添加物品
             </el-button>
           </span>
         </el-tooltip>
         <el-button plain @click="downloadImportTemplate">下载导入模板</el-button>
         <el-button plain :disabled="!formData.warehouseId" @click="importFileRef?.click()">导入明细</el-button>
+        <span class="text-12px text-gray-500">模板以规格编号匹配物品；多个序列号用逗号或换行分隔</span>
         <input ref="importFileRef" type="file" accept=".xls,.xlsx" hidden @change="importDetails" />
       </div>
       <el-table
         :data="formData.details"
         :summary-method="getDetailSummaries"
         border
-        empty-text="暂无商品明细"
+        empty-text="暂无物品明细"
         show-summary
       >
-        <el-table-column label="商品信息" min-width="220">
+        <el-table-column label="物品信息" min-width="220">
           <template #default="scope">
             <div>{{ scope.row.itemName || '-' }}</div>
             <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
-              商品编号：{{ scope.row.itemCode }}
+              物品编号：{{ scope.row.itemCode }}
             </div>
           </template>
         </el-table-column>
@@ -211,6 +213,7 @@
         </el-table-column>
       </el-table>
       <ItemSkuSelect ref="skuSelectRef" @change="handleSelectSku" />
+      <ReceiptTypeManager ref="typeManagerRef" />
     </el-form>
     <template #footer>
       <div class="flex items-center justify-between">
@@ -256,6 +259,8 @@ import download from '@/utils/download'
 import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
+import ReceiptTypeManager from './ReceiptTypeManager.vue'
+const typeManagerRef = ref<InstanceType<typeof ReceiptTypeManager>>()
 import InboundLocationSelect from '@/views/wms/inventory/components/InboundLocationSelect.vue'
 import { FormRules } from 'element-plus'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
@@ -382,7 +387,7 @@ const importDetails = async (event: Event) => {
     const data = new FormData()
     data.append('file', file)
     const response: any = await request.upload({ url: '/wms/receipt-order/import-parse', data })
-    const rows: Array<ReceiptOrderDetailVO & { skuCode?: string; quantity?: number; price?: number; locationCode?: string; batchNo?: string; productionDate?: string; expirationDate?: string }> = response.data
+    const rows: Array<ReceiptOrderDetailVO & { skuCode?: string; quantity?: number; price?: number; costPrice?: number; serialNumbers?: string; locationCode?: string; batchNo?: string; productionDate?: string; expirationDate?: string }> = response.data
     if (!rows?.length) { message.error('模板没有明细'); return }
     const places: Array<{ id: number; type: string; code: string }> = await request.get({ url: '/wms/storage-place/list', params: { warehouseId: formData.value.warehouseId } })
     const parseDate = (value?: string) => {
@@ -405,9 +410,15 @@ const importDetails = async (event: Event) => {
     for (const [index, row] of rows.entries()) {
       const code = String(row.skuCode || '').trim()
       const quantity = Number(row.quantity)
-      const price = row.price == null ? undefined : Number(row.price)
-      if (!code || !Number.isFinite(quantity) || quantity <= 0 || (price !== undefined && (!Number.isFinite(price) || price < 0))) {
-        message.error(`第 ${index + 1} 条明细规格编号、数量或成本价不正确`); return
+      const cost = row.costPrice ?? row.price
+      const total = row.totalPrice == null ? undefined : Number(row.totalPrice)
+      const price = cost == null ? (total == null ? undefined : dividePrice(total, quantity)) : Number(cost)
+      if (!code || !Number.isFinite(quantity) || quantity <= 0 || (price !== undefined && (!Number.isFinite(price) || price < 0)) || (total !== undefined && (!Number.isFinite(total) || total < 0))) {
+        message.error(`第 ${index + 1} 条明细规格编号、数量或金额不正确`); return
+      }
+      const serialNos = (row.serialNumbers || '').split(/[\r\n,，;；]+/).map((value) => value.trim()).filter(Boolean)
+      if (serialNos.length && (serialNos.length !== quantity || new Set(serialNos).size !== serialNos.length || serialNos.some((value) => value.length > 128))) {
+        message.error(`第 ${index + 1} 条明细序列号数量需与入库数量一致，且不能重复`); return
       }
       const skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
       const matched = skus.filter((sku) => sku.code === code)
@@ -419,7 +430,7 @@ const importDetails = async (event: Event) => {
       let productionDate: string | undefined, expirationDate: string | undefined
       try { productionDate = parseDate(row.productionDate); expirationDate = parseDate(row.expirationDate) } catch { message.error(`第 ${index + 1} 条明细日期格式不正确`); return }
       if ((!batchNo && (productionDate || expirationDate)) || (productionDate && expirationDate && productionDate > expirationDate)) { message.error(`第 ${index + 1} 条明细批次或日期不正确`); return }
-      details.push({ ...buildDetail(matched[0]), palletNo: row.palletNo, boxNo: row.boxNo, rollNo: row.rollNo, netLength: row.netLength, grossLength: row.grossLength, netWeight: row.netWeight, grossWeight: row.grossWeight, length: row.length, width: row.width, height: row.height, salesPrice: row.salesPrice, quantity, price, locationId: locations[0]?.id, batchNo, productionDate, expirationDate, totalPrice: multiplyPrice(quantity, price) })
+      details.push({ ...buildDetail(matched[0]), palletNo: row.palletNo, boxNo: row.boxNo, rollNo: row.rollNo, netLength: row.netLength, grossLength: row.grossLength, netWeight: row.netWeight, grossWeight: row.grossWeight, length: row.length, width: row.width, height: row.height, salesPrice: row.salesPrice, quantity, price, locationId: locations[0]?.id, batchNo, productionDate, expirationDate, serialNos: serialNos.length ? serialNos : undefined, totalPrice: total ?? multiplyPrice(quantity, price) })
     }
     formData.value.details = [...(formData.value.details || []), ...details]
     message.success(`已导入 ${details.length} 行，请核对后保存`)

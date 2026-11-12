@@ -18,7 +18,7 @@
         <el-input v-model="formData.label" placeholder="请输入数据标签" />
       </el-form-item>
       <el-form-item label="数据键值" prop="value">
-        <el-input v-model="formData.value" placeholder="请输入数据键值" />
+        <el-input v-model="formData.value" :disabled="formData.dictType === 'wms_receipt_order_type' && !!formData.id" placeholder="请输入数据键值" />
       </el-form-item>
       <el-form-item label="显示排序" prop="sort">
         <el-input-number v-model="formData.sort" :min="0" controls-position="right" />
@@ -146,6 +146,10 @@ const submitForm = async () => {
   if (!formRef) return
   const valid = await formRef.value.validate()
   if (!valid) return
+  if (formData.value.dictType === 'wms_receipt_order_type' && (!/^(0|[1-9]\d*)$/.test(formData.value.value) || Number(formData.value.value) > 2147483647)) {
+    message.warning('入库类型的数据键值须为不超过 2147483647 的非负整数')
+    return
+  }
   // 提交请求
   formLoading.value = true
   try {

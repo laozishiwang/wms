@@ -66,10 +66,10 @@ public class WmsStoragePlaceController {
     public CommonResult<Long> create(@Valid @RequestBody Create req) {
         warehouseService.validateWarehouseExists(req.warehouseId());
         if ("SHELF".equals(req.type())) {
-            if (req.parentId() != null) throw new ServiceException(1080001996, "货架不能设置上级");
+            if (req.parentId() != null) throw new ServiceException(1080001996, "库区不能设置上级");
         } else if ("LOCATION".equals(req.type())) {
             Long count = jdbc().queryForObject("SELECT COUNT(*) FROM wms_storage_place WHERE tenant_id=? AND warehouse_id=? AND id=? AND type='SHELF'", Long.class, tenant(), req.warehouseId(), req.parentId());
-            if (count == null || count == 0) throw new ServiceException(1080001996, "请选择当前仓库的货架");
+            if (count == null || count == 0) throw new ServiceException(1080001996, "请选择当前仓库的库区");
         } else throw new ServiceException(1080001996, "位置类型无效");
         var keys = new GeneratedKeyHolder();
         jdbc().update(con -> { var ps = con.prepareStatement("INSERT INTO wms_storage_place (tenant_id,warehouse_id,parent_id,type,code,name) VALUES (?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS); ps.setLong(1, tenant()); ps.setLong(2, req.warehouseId()); if (req.parentId() == null) ps.setNull(3, java.sql.Types.BIGINT); else ps.setLong(3, req.parentId()); ps.setString(4, req.type()); ps.setString(5, req.code()); ps.setString(6, req.name()); return ps; }, keys);

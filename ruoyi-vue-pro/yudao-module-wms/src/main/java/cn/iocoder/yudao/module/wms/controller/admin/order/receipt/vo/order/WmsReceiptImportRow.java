@@ -7,6 +7,9 @@ public class WmsReceiptImportRow {
     @ExcelProperty("规格编号") private String skuCode;
     @ExcelProperty("数量") private BigDecimal quantity;
     @ExcelProperty("单价") private BigDecimal price;
+    @ExcelProperty("成本价") private BigDecimal costPrice;
+    @ExcelProperty("金额") private BigDecimal totalPrice;
+    @ExcelProperty("序列号") private String serialNumbers;
     @ExcelProperty("库位编号") private String locationCode;
     @ExcelProperty("批次号") private String batchNo;
     @ExcelProperty("生产日期") private String productionDate;

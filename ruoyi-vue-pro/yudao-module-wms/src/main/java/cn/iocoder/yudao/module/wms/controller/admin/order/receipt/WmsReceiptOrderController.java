@@ -73,7 +73,7 @@ public class WmsReceiptOrderController {
     @GetMapping("/import-template")
     @PreAuthorize("@ss.hasPermission('wms:receipt-order:create')")
     public void receiptImportTemplate(HttpServletResponse response) throws IOException {
-        ExcelUtils.write(response, "入库明细导入模板.xls", "入库明细", cn.iocoder.yudao.module.wms.controller.admin.order.receipt.vo.order.WmsReceiptImportRow.class, Collections.emptyList());
+        ExcelUtils.write(response, "入库明细导入模板.xls", "入库明细", cn.iocoder.yudao.module.wms.controller.admin.order.receipt.vo.order.WmsReceiptImportTemplateRow.class, Collections.emptyList());
     }
 
     @PostMapping("/import-parse")

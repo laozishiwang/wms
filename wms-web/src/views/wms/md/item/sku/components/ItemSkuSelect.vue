@@ -1,11 +1,11 @@
-<!-- WMS 商品 SKU 选择器 -->
+<!-- WMS 物品 SKU 选择器 -->
 <template>
   <Dialog
     v-model="dialogVisible"
     :append-to-body="true"
     :scroll="true"
     max-height="calc(100vh - 220px)"
-    title="商品选择"
+    title="物品选择"
     width="80%"
   >
     <ContentWrap>
@@ -16,21 +16,21 @@
         class="-mb-15px"
         label-width="80px"
       >
-        <el-form-item label="商品名称" prop="itemName">
+        <el-form-item label="物品名称" prop="itemName">
           <el-input
             v-model="queryParams.itemName"
             class="!w-240px"
             clearable
-            placeholder="请输入商品名称"
+            placeholder="请输入物品名称"
             @keyup.enter="handleQuery"
           />
         </el-form-item>
-        <el-form-item label="商品编号" prop="itemCode">
+        <el-form-item label="物品编号" prop="itemCode">
           <el-input
             v-model="queryParams.itemCode"
             class="!w-240px"
             clearable
-            placeholder="请输入商品编号"
+            placeholder="请输入物品编号"
             @keyup.enter="handleQuery"
           />
         </el-form-item>
@@ -94,11 +94,11 @@
           type="selection"
           width="50"
         />
-        <el-table-column label="商品信息" min-width="220">
+        <el-table-column label="物品信息" min-width="220">
           <template #default="{ row }">
             <div>{{ row.itemName || '-' }}</div>
             <div v-if="row.itemCode" class="text-12px text-gray-500">
-              商品编号：{{ row.itemCode }}
+              物品编号：{{ row.itemCode }}
             </div>
             <div v-if="row.brandName" class="text-12px text-gray-500">
               品牌：{{ row.brandName }}
@@ -162,7 +162,7 @@ import { ElTable } from 'element-plus'
 import { ItemSkuApi, ItemSkuVO } from '@/api/wms/md/item/sku'
 import { formatDimensionText, formatPrice, formatWeight } from '@/views/wms/utils/format'
 
-/** WMS 商品 SKU 选择器 */
+/** WMS 物品 SKU 选择器 */
 defineOptions({ name: 'WmsItemSkuSelect' })
 
 const message = useMessage() // 消息弹窗
