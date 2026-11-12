@@ -1,0 +1,321 @@
+<script setup lang="ts">
+import { ElMessageBox, ElMessage } from 'element-plus'
+import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
+import ApprovalActions from '@/views/wms/order/components/ApprovalActions.vue'
+import { ApprovalApi } from '@/api/wms/approval'
+const approvalEnabled = ref(true)
+import { ReceiptOrderApi } from '@/api/wms/order/receipt'
+import { ShipmentOrderApi } from '@/api/wms/order/shipment'
+import { InventoryApi } from '@/api/wms/inventory'
+import { MovementOrderApi } from '@/api/wms/order/movement'
+import { CheckOrderApi } from '@/api/wms/order/check'
+import { WarehouseApi, type WarehouseVO } from '@/api/wms/md/warehouse'
+import type { ItemSkuVO } from '@/api/wms/md/item/sku'
+import request from '@/config/axios'
+import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import { QUANTITY_PRECISION } from '@/views/wms/utils/format'
+import { onBeforeRouteLeave } from 'vue-router'
+
+type Tab = 'receipt' | 'shipment' | 'movement' | 'check' | 'inventory'
+const tab = ref<Tab>('receipt')
+const keyword = ref('')
+const rows = ref<any[]>([])
+const details = ref<any[]>([])
+const selected = ref<any>()
+const loading = ref(false)
+const page = ref(1)
+const total = ref(0)
+const scanCode = ref('')
+const warehouseCode = ref('')
+const warehouseId = ref<number>()
+const warehouseName = ref('')
+const creatingReceipt = ref(false)
+const receiptType = ref<number | undefined>(101)
+const receiptScan = ref('')
+const receiptRows = ref<Array<{ sku: ItemSkuVO; quantity: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[] }>>([])
+const batchInput = ref('')
+const productionDate = ref('')
+const expirationDate = ref('')
+const clearBatchInput = () => { batchInput.value = ''; productionDate.value = ''; expirationDate.value = '' }
+const locationScan = ref('')
+const selectedLocation = ref<{ id: number; name: string }>()
+const visibleDetails = computed(() => (tab.value === 'check' || tab.value === 'receipt' || tab.value === 'shipment') && selectedLocation.value
+  ? details.value.filter((item) => item.locationId === selectedLocation.value?.id)
+  : details.value)
+const savingReceipt = ref(false)
+const verified = ref<Record<number, number>>({})
+const verifiedSerials = ref<Record<number, string[]>>({})
+const dirty = ref(false)
+const labels = { receipt: '入库', shipment: '出库', movement: '移库', check: '盘库', inventory: '库存' }
+const orderApis = {
+  receipt: { page: ReceiptOrderApi.getReceiptOrderPage, details: ReceiptOrderApi.getReceiptOrderDetailListByOrderId, complete: ReceiptOrderApi.completeReceiptOrder },
+  shipment: { page: ShipmentOrderApi.getShipmentOrderPage, details: ShipmentOrderApi.getShipmentOrderDetailListByOrderId, complete: ShipmentOrderApi.completeShipmentOrder },
+  movement: { page: MovementOrderApi.getMovementOrderPage, details: MovementOrderApi.getMovementOrderDetailListByOrderId, complete: MovementOrderApi.completeMovementOrder },
+  check: { page: CheckOrderApi.getCheckOrderPage, details: CheckOrderApi.getCheckOrderDetailListByOrderId, complete: CheckOrderApi.completeCheckOrder }
+}
+const load = async () => {
+  loading.value = true
+  try {
+    const params = { pageNo: page.value, pageSize: 20, ...(tab.value === 'inventory' ? { type: 'warehouse', skuCode: keyword.value || undefined } : { no: keyword.value || undefined }), ...((tab.value === 'receipt' || tab.value === 'shipment' || tab.value === 'inventory' || tab.value === 'check') && warehouseId.value ? { warehouseId: warehouseId.value } : {}) }
+    const result = tab.value === 'inventory' ? await InventoryApi.getInventoryPage(params) : await orderApis[tab.value].page(params)
+    rows.value = result.list
+    total.value = result.total
+  } finally { loading.value = false }
+}
+const confirmDiscard = async () => {
+  const unsavedReceipt = creatingReceipt.value && receiptRows.value.length > 0
+  if (!dirty.value && !unsavedReceipt) return true
+  try {
+    await ElMessageBox.confirm(unsavedReceipt ? '扫码明细尚未保存，离开将丢失修改。确定离开吗？' : '盘点数量尚未保存，离开将丢失修改。确定离开吗？', '提示', { type: 'warning' })
+    dirty.value = false
+    return true
+  } catch { return false }
+}
+const changeTab = async (value: Tab) => {
+  if (value === tab.value || !(await confirmDiscard())) return
+  tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); load()
+}
+const backToList = async () => { if (await confirmDiscard()) selected.value = undefined }
+onBeforeRouteLeave(() => confirmDiscard())
+const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+  if (dirty.value || (creatingReceipt.value && receiptRows.value.length > 0)) event.preventDefault()
+}
+onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload))
+onUnmounted(() => window.removeEventListener('beforeunload', warnBeforeUnload))
+const search = () => { page.value = 1; load() }
+const cancelReceipt = async () => {
+  if (!(await confirmDiscard())) return
+  creatingReceipt.value = false; selectedLocation.value = undefined; receiptRows.value = []; clearBatchInput()
+}
+const selectWarehouse = async () => {
+  const raw = warehouseCode.value.trim()
+  const match = /^WMS:WAREHOUSE:(\d+)$/i.exec(raw)
+  const warehouses: WarehouseVO[] = await WarehouseApi.getWarehouseSimpleList()
+  const found = warehouses.find((item) => match ? String(item.id) === match[1] : item.code === raw)
+  if (!found?.id) { ElMessage.warning('未找到仓库，请扫描仓库二维码或输入仓库编号'); return }
+  if (warehouseId.value !== found.id && creatingReceipt.value && !(await confirmDiscard())) return
+  if (warehouseId.value !== found.id) { receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput() }
+  warehouseId.value = found.id
+  warehouseName.value = found.name || found.code || ''
+  warehouseCode.value = ''
+  search()
+}
+const clearWarehouse = async () => { if (creatingReceipt.value && !(await confirmDiscard())) return; warehouseId.value = undefined; warehouseName.value = ''; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); search() }
+const scanReceiptSku = async () => {
+  const code = receiptScan.value.trim()
+  if (!code) return
+  const unique: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
+  if (unique.length !== 1 || !unique[0].id) { ElMessage.warning(unique.length ? '扫码结果不唯一，请使用规格编号' : '未找到商品规格'); return }
+  const batchNo = batchInput.value.trim() || undefined
+  if (!batchNo && (productionDate.value || expirationDate.value)) { ElMessage.warning('填写日期时必须填写批次号'); return }
+  if (productionDate.value && expirationDate.value && expirationDate.value < productionDate.value) { ElMessage.warning('到期日期不能早于生产日期'); return }
+  const produced = productionDate.value ? new Date(productionDate.value + 'T00:00:00').getTime() : undefined
+  const expires = expirationDate.value ? new Date(expirationDate.value + 'T00:00:00').getTime() : undefined
+  let available: number | undefined
+  if (tab.value === 'shipment') {
+    if (!warehouseId.value) { ElMessage.warning('请先选择仓库'); return }
+    const balances: Array<{ locationId: number | null; quantity: number }> = await request.get({ url: '/wms/storage-place/dimension-inventory', params: { warehouseId: warehouseId.value, skuId: unique[0].id, batchNo: batchNo || '' } })
+    const balance = balances.find((item) => (item.locationId ?? undefined) === selectedLocation.value?.id)
+    if (!balance || Number(balance.quantity) <= 0) { ElMessage.warning('该库位和批次没有此商品的可用库存'); return }
+    available = Number(balance.quantity)
+  }
+  const row = receiptRows.value.find((item) => item.sku.id === unique[0].id && item.locationId === selectedLocation.value?.id && item.batchNo === batchNo)
+  if (row?.serialNos?.length) { ElMessage.warning('该明细已录入序列号，请继续扫描序列号'); return }
+  if (row && tab.value === 'receipt' && (row.productionDate !== produced || row.expirationDate !== expires)) { ElMessage.warning('同一明细的批次日期不一致，请核对'); return }
+  if (available !== undefined && (row?.quantity || 0) + 1 > available) { ElMessage.warning('数量超过所选库位和批次的库存'); return }
+  if (row) row.quantity += 1
+  else receiptRows.value.push({ sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, batchNo, productionDate: produced, expirationDate: expires, available })
+  receiptScan.value = ''
+}
+const scanLocation = async () => {
+  const currentWarehouse = selected.value?.warehouseId || warehouseId.value
+  if (!currentWarehouse) { ElMessage.warning('请先选择仓库'); return }
+  const match = /^WMS:LOCATION:(\d+)$/i.exec(locationScan.value.trim())
+  if (!match) { ElMessage.warning('请扫描库位二维码'); return }
+  const places: Array<{ id: number; type: string; name: string; code: string }> = await request.get({ url: '/wms/storage-place/list', params: { warehouseId: currentWarehouse } })
+  const place = places.find((item) => item.type === 'LOCATION' && String(item.id) === match[1])
+  if (!place) { ElMessage.warning('该库位不属于当前仓库或不存在'); return }
+  selectedLocation.value = { id: place.id, name: `${place.name} (${place.code})` }
+  locationScan.value = ''
+}
+const saveReceipt = async () => {
+  if (receiptType.value == null || !warehouseId.value || !receiptRows.value.length || receiptRows.value.some((row) => !row.quantity || row.quantity <= 0 || (row.available !== undefined && row.quantity > row.available))) { ElMessage.warning('请选择单据类型、仓库并填写有效商品数量'); return }
+  savingReceipt.value = true
+  try {
+    const seen = new Set<string>()
+    for (const row of receiptRows.value) {
+      for (const serialNo of row.serialNos || []) {
+        const key = `${row.sku.id}:${serialNo}`
+        if (seen.has(key)) { ElMessage.warning('同一商品的序列号不能重复'); return }
+        seen.add(key)
+        if (tab.value === 'shipment') {
+          const matches: Array<{ warehouseId: number; locationId?: number | null; batchNo?: string | null; inStock: boolean }> = await request.get({ url: '/wms/serial-inventory/find', params: { skuId: row.sku.id, serialNo } })
+          if (!matches.some((item) => item.inStock && item.warehouseId === warehouseId.value && (item.locationId ?? undefined) === row.locationId && (item.batchNo || undefined) === row.batchNo)) { ElMessage.warning(`序列号 ${serialNo} 不在所选仓库、库位和批次`); return }
+        }
+      }
+    }
+    const data = { no: `PDA${Date.now()}${Math.floor(Math.random() * 1000)}`, type: receiptType.value, orderTime: String(Date.now()), warehouseId: warehouseId.value, details: receiptRows.value.map((row) => ({ skuId: row.sku.id, quantity: row.quantity, locationId: row.locationId, batchNo: row.batchNo, productionDate: row.productionDate, expirationDate: row.expirationDate, serialNos: row.serialNos?.length ? row.serialNos : undefined })) }
+    const id = tab.value === 'shipment' ? await ShipmentOrderApi.createShipmentOrder(data) : await ReceiptOrderApi.createReceiptOrder(data)
+    ElMessage.success(`${tab.value === 'shipment' ? '出库' : '入库'}草稿已创建，请核对后完成`)
+    creatingReceipt.value = false
+    receiptRows.value = []
+    selectedLocation.value = undefined
+    clearBatchInput()
+    const order = tab.value === 'shipment' ? await ShipmentOrderApi.getShipmentOrder(id) : await ReceiptOrderApi.getReceiptOrder(id)
+    await open(order)
+  } finally { savingReceipt.value = false }
+}
+const open = async (row: any) => {
+  if (tab.value === 'inventory') return
+  selectedLocation.value = undefined
+  locationScan.value = ''
+  verified.value = {}
+  verifiedSerials.value = {}
+  scanCode.value = ''
+  if (tab.value === 'check') {
+    selected.value = await CheckOrderApi.getCheckOrder(row.id)
+    details.value = selected.value.details || []
+    dirty.value = false
+    scanCode.value = ''
+  } else {
+    details.value = await orderApis[tab.value].details(row.id)
+    selected.value = row
+  }
+}
+const scanOrder = async () => {
+  const code = scanCode.value.trim()
+  const activeDetails = (tab.value === 'receipt' || tab.value === 'shipment') && selectedLocation.value ? details.value.filter((item) => item.locationId === selectedLocation.value?.id) : details.value
+  const matchingDetails = activeDetails.filter((item) => item.skuCode === code || (item.serialNos || []).includes(code))
+  if (matchingDetails.length > 1) { ElMessage.warning('扫描码对应多条明细，请在电脑端处理'); return }
+  const serialMatches = activeDetails.filter((item) => (item.serialNos || []).includes(code))
+  if (serialMatches.length === 1) {
+    const item = serialMatches[0]
+    const scanned = verifiedSerials.value[item.id] || []
+    if (scanned.includes(code)) { ElMessage.warning('序列号已核对'); return }
+    verifiedSerials.value[item.id] = [...scanned, code]
+    verified.value[item.id] = scanned.length + 1
+    scanCode.value = ''
+    return
+  }
+  let matches = activeDetails.filter((item) => item.skuCode === code)
+  if (!matches.length && code) {
+    const skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
+    if (skus.length > 1) { ElMessage.warning('扫码结果不唯一，请使用规格编号'); return }
+    if (skus.length === 1) matches = activeDetails.filter((item) => item.skuId === skus[0].id)
+  }
+  if (matches.length !== 1) {
+    ElMessage.warning(matches.length ? '该编号对应多条明细，请手动核对' : '单据中未找到此 SKU 编号')
+    return
+  }
+  const item = matches[0]
+  if (item.serialNos?.length) { ElMessage.warning('请逐个扫描序列号'); return }
+  if ((verified.value[item.id] || 0) + 1 > Number(item.quantity)) {
+    ElMessage.warning('核对数量不能超过单据数量')
+    return
+  }
+  verified.value[item.id] = (verified.value[item.id] || 0) + 1
+  scanCode.value = ''
+}
+const scanCheck = async () => {
+  const code = scanCode.value.trim()
+  if (!code) return
+  let matches = visibleDetails.value.filter((item) => item.skuCode === code || item.batchNo === code)
+  if (!matches.length) {
+    const skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
+    if (skus.length > 1) { ElMessage.warning('扫码结果不唯一，请使用规格编号'); return }
+    if (skus.length === 1) matches = visibleDetails.value.filter((item) => item.skuId === skus[0].id)
+  }
+  if (matches.length !== 1) {
+    ElMessage.warning(matches.length ? '该编号对应多条明细，请手动录入' : '单据中未找到此商品或批次编号')
+    return
+  }
+  matches[0].checkQuantity = Number(matches[0].checkQuantity || 0) + 1
+  dirty.value = true
+  scanCode.value = ''
+}
+const setCheckSerials = (item: any, serials: string[]) => {
+  const ordinary = Number(item.checkQuantity || 0) - (item.actualSerialNos?.length || 0)
+  item.actualSerialNos = serials
+  item.checkQuantity = ordinary + serials.length
+  dirty.value = true
+}
+const resetCheck = () => {
+  details.value.forEach((item) => { item.checkQuantity = 0; if (item.actualSerialNos) item.actualSerialNos = [] })
+  dirty.value = true
+}
+const saveCheck = async () => {
+  if (details.value.some((item) => Number(item.checkQuantity) < (item.actualSerialNos?.length || 0))) {
+    ElMessage.warning('实盘数量不能少于序列号数量')
+    return
+  }
+  if (details.value.some((item) => item.checkQuantity === null || item.checkQuantity === '' || !Number.isFinite(Number(item.checkQuantity)) || Number(item.checkQuantity) < 0)) {
+    ElMessage.warning('请输入有效的非负实盘数量')
+    return
+  }
+  await CheckOrderApi.updateCheckOrder({ ...selected.value, details: details.value })
+  dirty.value = false
+  ElMessage.success('盘点数量已保存')
+}
+const canSubmitApproval = () => {
+  if (dirty.value) { ElMessage.warning('请先保存盘点数量'); return false }
+  if ((tab.value === 'receipt' || tab.value === 'shipment' || tab.value === 'movement') && (!details.value.length || details.value.some((item) => item.serialNos?.length ? (verifiedSerials.value[item.id]?.length || 0) !== item.serialNos.length : Number(verified.value[item.id] || 0) !== Number(item.quantity)))) {
+    ElMessage.warning('请先核对所有明细数量或序列号'); return false
+  }
+  return true
+}
+const complete = async () => {
+  if (dirty.value) { ElMessage.warning('请先保存盘点数量'); return }
+  if ((tab.value === 'receipt' || tab.value === 'shipment' || tab.value === 'movement') && (!details.value.length || details.value.some((item) => (item.serialNos?.length ? (verifiedSerials.value[item.id]?.length || 0) !== item.serialNos.length : Number(verified.value[item.id] || 0) !== Number(item.quantity))))) {
+    ElMessage.warning('请先核对所有明细数量')
+    return
+  }
+  await ElMessageBox.confirm('确认完成该单据并更新库存？', '操作确认', { type: 'warning' })
+  if (tab.value === 'inventory') return
+  await orderApis[tab.value].complete(selected.value.id)
+  ElMessage.success('操作成功')
+  selected.value = undefined
+  await load()
+}
+onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).enabled; await load() })
+</script>
+
+<template>
+  <main class="pda">
+    <header><div><small>WAREHOUSE</small><h1>移动仓库</h1></div><a href="/index">电脑端</a></header>
+    <nav><button v-for="(label, key) in labels" :key="key" :class="{ active: tab === key }" @click="changeTab(key as Tab)">{{ label }}</button></nav>
+    <section v-if="creatingReceipt" class="content">
+      <button class="back" @click="cancelReceipt">‹ 返回列表</button>
+      <h2>扫码新建{{ tab === 'shipment' ? '出库' : '入库' }}</h2><p>仓库：{{ warehouseName }}</p>
+      <p>扫描库位、批次及商品后，可在明细中扫描序列号；未选择库位时使用未分配库位库存。序列号数量即该明细数量。</p>
+      <label>批次号（可选）<input v-model="batchInput" placeholder="输入或扫描批次号" /></label>
+      <template v-if="tab === 'receipt' && batchInput"><label>生产日期 <input v-model="productionDate" type="date" /></label><label>到期日期 <input v-model="expirationDate" type="date" /></label></template>
+      <label>单据类型 <select v-model.number="receiptType"><option v-for="option in getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+      <form class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描当前仓库的库位二维码" /><button>选择库位</button></form>
+      <p>当前库位：{{ selectedLocation?.name || '未分配' }} <button v-if="selectedLocation" class="back" @click="selectedLocation = undefined">清除</button></p>
+      <form class="search" @submit.prevent="scanReceiptSku"><input v-model="receiptScan" placeholder="扫描规格编号或商品条码" /><button>添加</button></form>
+      <article v-for="(row, index) in receiptRows" :key="`${row.sku.id}-${row.locationId || 0}-${row.batchNo || ''}`"><strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong><p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p><el-input-number v-model="row.quantity" :disabled="!!row.serialNos?.length" :min="0.01" :max="row.available" :precision="QUANTITY_PRECISION" /><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /><button class="back" @click="receiptRows.splice(index, 1)">删除</button></article>
+      <button class="primary" :disabled="savingReceipt" @click="saveReceipt">保存{{ tab === 'shipment' ? '出库' : '入库' }}草稿</button>
+    </section>
+    <template v-else-if="!selected">
+      <form class="search" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="扫描仓库二维码或输入仓库编号" /><button>选择仓库</button></form>
+      <div v-if="warehouseId" class="content">当前仓库：{{ warehouseName }} <button class="back" @click="clearWarehouse">清除</button></div>
+      <div v-if="tab === 'receipt' && warehouseId" class="content"><button v-hasPermi="['wms:receipt-order:create']" class="primary" @click="selectedLocation = undefined; receiptRows = []; clearBatchInput(); receiptType = getIntDictOptions(DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value; creatingReceipt = true">扫码新建入库</button></div>
+      <div v-if="tab === 'shipment' && warehouseId" class="content"><button v-hasPermi="['wms:shipment-order:create']" class="primary" @click="selectedLocation = undefined; receiptRows = []; clearBatchInput(); receiptType = getIntDictOptions(DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE)[0]?.value; creatingReceipt = true">扫码新建出库</button></div>
+      <form class="search" @submit.prevent="search"><input v-model="keyword" :placeholder="tab === 'inventory' ? '扫描或输入 SKU 编号' : '扫描或输入单号'" /><button>查询</button></form>
+      <div v-loading="loading" class="content">
+        <p class="hint">{{ labels[tab] }} · 共 {{ total }} 条</p>
+        <article v-for="row in rows" :key="tab === 'inventory' ? `${row.warehouseId}-${row.skuId}` : row.id" @click="tab !== 'inventory' && open(row)">
+          <template v-if="tab === 'inventory'"><strong>{{ row.itemName }} {{ row.skuName }}</strong><p>{{ row.skuCode }} · {{ row.warehouseName }}</p><b>库存 {{ row.quantity }} {{ row.unit }}</b></template>
+          <template v-else><strong>{{ row.no }}</strong><span class="status">{{ row.status === 0 ? '草稿' : row.status === 1 ? '待审批' : row.status === 4 ? '已完成' : '已作废' }}</span><p>{{ tab === 'movement' ? `${row.sourceWarehouseName} → ${row.targetWarehouseName}` : row.warehouseName }} · 数量 {{ row.totalQuantity }}</p><small>点击查看明细 ›</small></template>
+        </article>
+        <el-empty v-if="!loading && !rows.length" description="暂无数据" />
+        <div class="pagination"><button :disabled="page === 1" @click="page--; load()">上一页</button><span>{{ page }} / {{ Math.max(1, Math.ceil(total / 20)) }}</span><button :disabled="page * 20 >= total" @click="page++; load()">下一页</button></div>
+      </div>
+    </template>
+    <section v-else class="content"><ApprovalActions v-if="(approvalEnabled || selected.status === 1) && !dirty && tab !== 'inventory'" :before-submit="canSubmitApproval" :type="tab" :id="selected.id" :status="selected.status" @changed="selected = undefined; load()" /><button class="back" @click="backToList">‹ 返回列表</button><h2>{{ selected.no }}</h2><p>{{ tab === 'movement' ? `${selected.sourceWarehouseName} → ${selected.targetWarehouseName}` : selected.warehouseName }}</p><form v-if="tab === 'check' && selected.status === 0" class="search" @submit.prevent="scanCheck"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号，数量加 1" /><button>扫码录入</button></form><p v-if="tab === 'check' && selected.status === 0">扫码会在当前实盘数量上累加。<button class="back" @click="resetCheck">实盘数量清零</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check') && selected.status === 0" class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描库位二维码以核对对应明细" /><button>选择库位</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check') && selectedLocation">核对库位：{{ selectedLocation.name }} <button class="back" @click="selectedLocation = undefined">清除</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0" class="search" @submit.prevent="scanOrder"><input v-model="scanCode" placeholder="扫描序列号或 SKU 编号" /><button>扫码核对</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">核对数据仅在本次操作中保留</p><article v-for="item in visibleDetails" :key="item.id"><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p><p v-if="item.batchNo">批次：{{ item.batchNo }}</p><p v-if="item.locationId">库位 ID：{{ item.locationId }}</p><b>{{ tab === 'check' ? '账面数量' : '数量' }} {{ item.quantity }} {{ item.unit }}</b><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">已核对 <el-input-number v-if="!item.serialNos?.length" v-model="verified[item.id]" :min="0" :max="Number(item.quantity)" :precision="QUANTITY_PRECISION" :controls="false" /><span v-else>{{ verified[item.id] || 0 }}</span> / {{ item.quantity }}</p><p v-if="tab === 'check' && selected.status === 0">实盘序列号 <SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></p><p v-if="tab === 'check'">实盘数量 <el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><span v-else>{{ item.checkQuantity }}</span></p></article><button v-if="tab === 'check' && selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="saveCheck">保存盘点数量</button><button v-if="selected.status === 0 && !approvalEnabled" v-hasPermi="[`wms:${tab}-order:complete`]" class="primary" @click="complete">确认完成{{ labels[tab] }}</button></section>
+  </main>
+</template>
+
+<style scoped>
+.pda { max-width: 640px; min-height: 100vh; margin: auto; background: #f4f7fb; color: #17263c; font-family: system-ui, sans-serif; } header { padding: 25px 20px 18px; display:flex; justify-content:space-between; align-items:center; background:#fff; } header small { color:#528ee8; font-weight:700; letter-spacing:.16em; } h1 { margin:4px 0; font-size:25px; } header a { color:#438ce7; } nav { display:flex; gap:8px; padding:12px 16px; background:#fff; } button { border:0; cursor:pointer; } nav button { flex:1; padding:12px; background:#f0f4f9; border-radius:10px; color:#56667b; } nav .active,.primary { background:#428ff3; color:white; } .search { display:flex; gap:8px; padding:16px; } .search input { flex:1; min-width:0; border:1px solid #dce5f1; border-radius:10px; padding:12px; font-size:16px; } .search button,.primary { background:#428ff3; color:white; padding:12px 20px; border-radius:10px; } .content { padding:0 16px 30px; } .hint, p, small { color:#77879c; } article { background:white; border-radius:14px; padding:17px; margin-bottom:10px; box-shadow:0 3px 14px #203f6810; } article p { margin:10px 0; } article b { color:#287bdc; } .status { float:right; color:#418ae5; } .pagination { display:flex; justify-content:space-between; align-items:center; padding:12px 0; } .pagination button,.back { background:white; color:#438ce7; border-radius:8px; padding:10px; } .primary { width:100%; margin-top:12px; }
+</style>
