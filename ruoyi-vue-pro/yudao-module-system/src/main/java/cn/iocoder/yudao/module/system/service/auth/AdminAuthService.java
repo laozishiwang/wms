@@ -31,6 +31,8 @@ public interface AdminAuthService {
      */
     AuthLoginRespVO login(@Valid AuthLoginReqVO reqVO);
 
+    AuthLoginRespVO pdaLogin(@Valid AuthLoginReqVO reqVO);
+
     /**
      * 轮询二维码，确认后登录并签发电脑端令牌
      *

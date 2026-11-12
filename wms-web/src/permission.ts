@@ -21,6 +21,7 @@ let userInfoPromise: Promise<unknown> | undefined
 // 路由不重定向白名单
 const whiteList = [
   '/login',
+  '/pda-login',
   '/social-login',
   '/auth-redirect',
   '/bind',
@@ -34,8 +35,8 @@ router.beforeEach(async (to, from, next) => {
   start()
   loadStart()
   if (getAccessToken()) {
-    if (to.path === '/login') {
-      next({ path: '/' })
+    if (to.path === '/login' || to.path === '/pda-login') {
+      next({ path: to.path === '/pda-login' ? '/pda' : '/' })
     } else {
       const dictStore = useDictStoreWithOut()
       const userStore = useUserStoreWithOut()
@@ -63,7 +64,7 @@ router.beforeEach(async (to, from, next) => {
           // 详见 issue：https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/IBJ6SP
           removeToken()
           deleteUserCache()
-          next(`/login?redirect=${encodeURIComponent(redirect)}`)
+          next(`${location.port === '889' ? '/pda-login' : '/login'}?redirect=${encodeURIComponent(redirect)}`)
           return
         } finally {
           isRelogin.show = false
@@ -87,7 +88,7 @@ router.beforeEach(async (to, from, next) => {
     if (whiteList.some((path) => to.path === path || to.path.startsWith(`${path}/`))) {
       next()
     } else {
-      next(`/login?redirect=${encodeURIComponent(to.fullPath)}`) // 否则全部重定向到登录页
+      next(`${location.port === '889' ? '/pda-login' : '/login'}?redirect=${encodeURIComponent(to.fullPath)}`)
     }
   }
 })

@@ -65,11 +65,29 @@ public class AuthController {
     @Resource
     private SecurityProperties securityProperties;
 
+    @Resource
+    private cn.iocoder.yudao.framework.ratelimiter.core.redis.RateLimiterRedisDAO pdaRateLimiter;
+
     @PostMapping("/login")
     @PermitAll
     @Operation(summary = "使用账号密码登录")
     public CommonResult<AuthLoginRespVO> login(@RequestBody @Valid AuthLoginReqVO reqVO) {
         return success(authService.login(reqVO));
+    }
+
+    @PostMapping("/pda-login")
+    @PermitAll
+    @ApiAccessLog(requestEnable = false, responseEnable = false)
+    public CommonResult<AuthLoginRespVO> pdaLogin(@RequestBody @Valid AuthLoginReqVO reqVO) {
+        String ip = cn.iocoder.yudao.framework.common.util.servlet.ServletUtils.getClientIP();
+        String account = String.valueOf(cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder.getTenantId())
+                + ":" + reqVO.getUsername().toLowerCase(java.util.Locale.ROOT);
+        boolean ipAllowed = Boolean.TRUE.equals(pdaRateLimiter.tryAcquire("pda-login:ip:" + cn.hutool.crypto.SecureUtil.sha256(ip), 6, 60, java.util.concurrent.TimeUnit.SECONDS));
+        boolean accountAllowed = Boolean.TRUE.equals(pdaRateLimiter.tryAcquire("pda-login:account:" + cn.hutool.crypto.SecureUtil.sha256(account), 20, 300, java.util.concurrent.TimeUnit.SECONDS));
+        if (!ipAllowed || !accountAllowed) {
+            throw new cn.iocoder.yudao.framework.common.exception.ServiceException(429, "登录尝试过于频繁，请稍后重试");
+        }
+        return success(authService.pdaLogin(reqVO));
     }
 
     @PostMapping("/logout")

@@ -15,6 +15,18 @@ import request from '@/config/axios'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { QUANTITY_PRECISION } from '@/views/wms/utils/format'
 import { onBeforeRouteLeave } from 'vue-router'
+import { loginOut } from '@/api/login'
+import { removeToken } from '@/utils/auth'
+import { deleteUserCache } from '@/hooks/web/useCache'
+
+const logout = async () => {
+  if (!(await confirmDiscard())) return
+  try { await loginOut() } finally {
+    removeToken()
+    deleteUserCache()
+    window.location.href = location.port === '889' ? '/pda-login' : '/login'
+  }
+}
 
 type Tab = 'receipt' | 'shipment' | 'movement' | 'check' | 'inventory'
 const tab = ref<Tab>('receipt')
@@ -281,7 +293,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 
 <template>
   <main class="pda">
-    <header><div><small>WAREHOUSE</small><h1>移动仓库</h1></div><a href="/index">电脑端</a></header>
+    <header><div><small>WAREHOUSE</small><h1>移动仓库</h1></div><button @click="logout">退出登录</button></header>
     <nav><button v-for="(label, key) in labels" :key="key" :class="{ active: tab === key }" @click="changeTab(key as Tab)">{{ label }}</button></nav>
     <section v-if="creatingReceipt" class="content">
       <button class="back" @click="cancelReceipt">‹ 返回列表</button>

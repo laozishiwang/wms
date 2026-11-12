@@ -117,6 +117,13 @@ public class AdminAuthServiceImpl implements AdminAuthService {
 
     @Override
     @DataPermission(enable = false)
+    public AuthLoginRespVO pdaLogin(AuthLoginReqVO reqVO) {
+        AdminUserDO user = authenticate(reqVO.getUsername(), reqVO.getPassword());
+        return createTokenAfterLoginSuccess(user, reqVO.getUsername(), LoginLogTypeEnum.LOGIN_USERNAME);
+    }
+
+    @Override
+    @DataPermission(enable = false)
     public AuthQrcodePollRespVO qrcodeLogin(AuthQrcodePollReqVO reqVO) {
         Pair<AuthQrcodeStatusEnum, Long> result = authQrcodeService.pollAuthQrcode(reqVO);
         AuthQrcodePollRespVO respVO = new AuthQrcodePollRespVO().setStatus(result.getKey().getStatus());

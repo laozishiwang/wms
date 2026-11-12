@@ -34,6 +34,12 @@ const { t } = useI18n()
  **/
 const remainingRouter: AppRouteRecordRaw[] = [
   {
+    path: '/pda-login',
+    name: 'PdaLogin',
+    component: () => import('@/views/wms/pda/Login.vue'),
+    meta: { hidden: true, noTagsView: true, title: '移动仓库登录' }
+  },
+  {
     path: '/pda',
     name: 'Pda',
     component: () => import('@/views/wms/pda/Index.vue'),
