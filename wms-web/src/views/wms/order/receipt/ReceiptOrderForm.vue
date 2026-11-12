@@ -384,8 +384,16 @@ function buildDetail(sku: ItemSkuVO): ReceiptOrderDetailVO {
     skuId: sku.id,
     skuCode: sku.code,
     skuName: sku.name,
+    netLength: sku.netLength,
+    grossLength: sku.grossLength,
+    netWeight: sku.netWeight,
+    grossWeight: sku.grossWeight,
+    length: sku.length,
+    width: sku.width,
+    height: sku.height,
+    salesPrice: sku.sellingPrice,
     quantity: undefined,
-    price: undefined,
+    price: sku.costPrice,
     totalPrice: undefined
   }
 }
@@ -454,7 +462,9 @@ const importDetails = async (event: Event) => {
       let productionDate: string | undefined, expirationDate: string | undefined
       try { productionDate = parseDate(row.productionDate); expirationDate = parseDate(row.expirationDate) } catch { message.error(`第 ${index + 1} 条明细日期格式不正确`); return }
       if ((!batchNo && (productionDate || expirationDate)) || (productionDate && expirationDate && productionDate > expirationDate)) { message.error(`第 ${index + 1} 条明细批次或日期不正确`); return }
-      details.push({ ...buildDetail(matched[0]), palletNo: row.palletNo, boxNo: row.boxNo, rollNo: row.rollNo, netLength: row.netLength, grossLength: row.grossLength, netWeight: row.netWeight, grossWeight: row.grossWeight, length: row.length, width: row.width, height: row.height, salesPrice: row.salesPrice, quantity, price, locationId: locations[0]?.id, batchNo, productionDate, expirationDate, serialNos: serialNos.length ? serialNos : undefined, totalPrice: total ?? multiplyPrice(quantity, price) })
+      const defaults = buildDetail(matched[0])
+      const effectivePrice = price ?? defaults.price
+      details.push({ ...defaults, palletNo: row.palletNo, boxNo: row.boxNo, rollNo: row.rollNo, netLength: row.netLength ?? defaults.netLength, grossLength: row.grossLength ?? defaults.grossLength, netWeight: row.netWeight ?? defaults.netWeight, grossWeight: row.grossWeight ?? defaults.grossWeight, length: row.length ?? defaults.length, width: row.width ?? defaults.width, height: row.height ?? defaults.height, salesPrice: row.salesPrice ?? defaults.salesPrice, quantity, price: effectivePrice, locationId: locations[0]?.id, batchNo, productionDate, expirationDate, serialNos: serialNos.length ? serialNos : undefined, totalPrice: total ?? multiplyPrice(quantity, effectivePrice) })
     }
     formData.value.details = [...(formData.value.details || []), ...details]
     message.success(`已导入 ${details.length} 行，请核对后保存`)
