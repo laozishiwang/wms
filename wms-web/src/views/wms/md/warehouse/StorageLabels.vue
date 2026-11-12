@@ -10,6 +10,8 @@ const places = ref<Place[]>([])
 const kind = ref<'SHELF' | 'LOCATION'>('SHELF')
 const visiblePlaces = computed(() => places.value.filter((place) => place.type === kind.value))
 const form = reactive({ code: '', name: '', parentId: undefined as number | undefined })
+const editing = ref<Place>()
+const editForm = reactive({ code: '', name: '' })
 const label = ref({ title: '', code: '', qr: '' })
 const printRef = ref<HTMLButtonElement>()
 const imageRef = ref<HTMLImageElement>()
@@ -20,6 +22,18 @@ const create = async () => {
   if (!form.code.trim() || !form.name.trim() || (kind.value === 'LOCATION' && !form.parentId)) { ElMessage.warning('请填写编号、名称及所属库区'); return }
   await request.post({ url: '/wms/storage-place/create', data: { warehouseId: warehouse.value!.id, type: kind.value, code: form.code.trim(), name: form.name.trim(), parentId: kind.value === 'LOCATION' ? form.parentId : undefined } })
   form.code = ''; form.name = ''; await load(); ElMessage.success('创建成功')
+}
+const startEdit = (place: Place) => {
+  editing.value = place
+  editForm.code = place.code
+  editForm.name = place.name
+}
+const saveEdit = async () => {
+  if (!editForm.code.trim() || !editForm.name.trim()) { ElMessage.warning('请填写编号和名称'); return }
+  await request.put({ url: '/wms/storage-place/update', data: { id: editing.value!.id, warehouseId: warehouse.value!.id, code: editForm.code.trim(), name: editForm.name.trim() } })
+  editing.value = undefined
+  await load()
+  ElMessage.success('修改成功')
 }
 const print = async (type: 'WAREHOUSE' | 'SHELF' | 'LOCATION', item: { id: number; name: string; code: string }) => {
   label.value = { title: item.name, code: item.code, qr: await QRCode.toDataURL(`WMS:${type}:${item.id}`, { width: 260, margin: 1 }) }
@@ -39,9 +53,16 @@ defineExpose({ open })
       <el-form-item label="名称"><el-input v-model="form.name" maxlength="100" /></el-form-item>
       <el-form-item><el-button v-hasPermi="['wms:warehouse:create']" type="primary" @click="create">新增</el-button></el-form-item>
     </el-form>
-    <el-table :data="visiblePlaces"><el-table-column label="类型" width="90"><template #default="{ row }">{{ row.type === 'SHELF' ? '库区' : '库位' }}</template></el-table-column><el-table-column prop="code" label="编号" /><el-table-column prop="name" label="名称" /><el-table-column label="所属库区"><template #default="{ row }">{{ places.find((p) => p.id === row.parentId)?.name || '-' }}</template></el-table-column><el-table-column label="操作" width="120"><template #default="{ row }"><el-button link type="primary" @click="print(row.type, row)">打印二维码</el-button></template></el-table-column></el-table>
+    <el-table :data="visiblePlaces"><el-table-column label="类型" width="90"><template #default="{ row }">{{ row.type === 'SHELF' ? '库区' : '库位' }}</template></el-table-column><el-table-column prop="code" label="编号" /><el-table-column prop="name" label="名称" /><el-table-column label="所属库区"><template #default="{ row }">{{ places.find((p) => p.id === row.parentId)?.name || '-' }}</template></el-table-column><el-table-column label="操作" width="170"><template #default="{ row }"><el-button v-hasPermi="['wms:warehouse:update']" link type="primary" @click="startEdit(row)">修改</el-button><el-button link type="primary" @click="print(row.type, row)">打印二维码</el-button></template></el-table-column></el-table>
     <p>入库时扫描库位码可登记位置，出库可选择有库存的库位。</p>
     <div style="position: fixed; left: -9999px"><div id="wms-storage-label" style="text-align: center; color: #000; background: white; width: 300px"><img ref="imageRef" :src="label.qr" alt="二维码" style="width: 220px; height: 220px" /><div style="font-size: 20px">{{ label.title }}</div><div style="font-size: 16px">{{ label.code }}</div></div></div>
     <button ref="printRef" v-print="printOptions" type="button" style="display: none"></button>
+    <el-dialog :model-value="!!editing" title="修改库区或库位" width="min(460px, 94vw)" append-to-body @update:model-value="(value) => { if (!value) editing = undefined }">
+      <el-form label-width="70px">
+        <el-form-item label="编号"><el-input v-model="editForm.code" maxlength="64" /></el-form-item>
+        <el-form-item label="名称"><el-input v-model="editForm.name" maxlength="100" /></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="editing = undefined">取消</el-button><el-button type="primary" @click="saveEdit">保存</el-button></template>
+    </el-dialog>
   </el-dialog>
 </template>

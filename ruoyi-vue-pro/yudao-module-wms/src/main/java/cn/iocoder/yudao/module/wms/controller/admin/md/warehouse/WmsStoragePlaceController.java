@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +31,8 @@ public class WmsStoragePlaceController {
     public record Place(Long id, Long warehouseId, Long parentId, String type, String code, String name) {}
     public record Balance(Long locationId, String code, String name, String shelfName, java.math.BigDecimal quantity) {}
     public record Create(@NotNull Long warehouseId, Long parentId, @NotBlank String type,
+                         @NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 100) String name) {}
+    public record Update(@NotNull Long id, @NotNull Long warehouseId,
                          @NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 100) String name) {}
 
     @GetMapping("/list")
@@ -74,5 +77,19 @@ public class WmsStoragePlaceController {
         var keys = new GeneratedKeyHolder();
         jdbc().update(con -> { var ps = con.prepareStatement("INSERT INTO wms_storage_place (tenant_id,warehouse_id,parent_id,type,code,name) VALUES (?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS); ps.setLong(1, tenant()); ps.setLong(2, req.warehouseId()); if (req.parentId() == null) ps.setNull(3, java.sql.Types.BIGINT); else ps.setLong(3, req.parentId()); ps.setString(4, req.type()); ps.setString(5, req.code()); ps.setString(6, req.name()); return ps; }, keys);
         return success(keys.getKey().longValue());
+    }
+
+    @PutMapping("/update")
+    @PreAuthorize("@ss.hasPermission('wms:warehouse:update')")
+    public CommonResult<Boolean> update(@Valid @RequestBody Update req) {
+        warehouseService.validateWarehouseExists(req.warehouseId());
+        try {
+            int changed = jdbc().update("UPDATE wms_storage_place SET code=?,name=? WHERE id=? AND tenant_id=? AND warehouse_id=?",
+                    req.code().trim(), req.name().trim(), req.id(), tenant(), req.warehouseId());
+            if (changed == 0) throw new ServiceException(1080001996, "库区或库位不存在");
+        } catch (DuplicateKeyException ex) {
+            throw new ServiceException(1080001996, "该仓库中已存在相同的位置编号");
+        }
+        return success(true);
     }
 }

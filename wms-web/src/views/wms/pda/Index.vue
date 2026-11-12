@@ -47,10 +47,18 @@ const scanCode = ref('')
 const warehouseCode = ref('')
 const warehouseId = ref<number>()
 const warehouseName = ref('')
+const warehouseChoices = ref<WarehouseVO[]>([])
+const showWarehouseChoices = ref(false)
 const creatingReceipt = ref(false)
 const receiptType = ref<number | undefined>(101)
 const receiptScan = ref('')
-const receiptRows = ref<Array<{ sku: ItemSkuVO; quantity: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[] }>>([])
+let nextReceiptRowId = 0
+const receiptRows = ref<Array<{ rowId: number; sku: ItemSkuVO; quantity: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[]; palletNo?: string; boxNo?: string; rollNo?: string; netLength?: number; grossLength?: number; netWeight?: number; grossWeight?: number; length?: number; width?: number; height?: number; price?: number; salesPrice?: number }>>([])
+const arrivalFields: Array<{ key: 'palletNo' | 'boxNo' | 'rollNo' | 'netLength' | 'grossLength' | 'netWeight' | 'grossWeight' | 'length' | 'width' | 'height' | 'price' | 'salesPrice'; label: string; text?: boolean }> = [
+  { key: 'palletNo', label: '托盘号', text: true }, { key: 'boxNo', label: '箱号', text: true }, { key: 'rollNo', label: '卷号', text: true },
+  { key: 'netLength', label: '净长(cm)' }, { key: 'grossLength', label: '毛长(cm)' }, { key: 'netWeight', label: '净重(kg)' }, { key: 'grossWeight', label: '毛重(kg)' },
+  { key: 'length', label: '长(cm)' }, { key: 'width', label: '宽(cm)' }, { key: 'height', label: '高(cm)' }, { key: 'price', label: '成本价' }, { key: 'salesPrice', label: '销售价' }
+]
 const batchInput = ref('')
 const productionDate = ref('')
 const expirationDate = ref('')
@@ -114,18 +122,27 @@ const cancelReceipt = async () => {
   if (!(await confirmDiscard())) return
   creatingReceipt.value = false; selectedLocation.value = undefined; receiptRows.value = []; clearBatchInput()
 }
+const applyWarehouse = async (found: WarehouseVO) => {
+  if (!found.id) return
+  if (warehouseId.value !== found.id && creatingReceipt.value && !(await confirmDiscard())) return
+  if (warehouseId.value !== found.id) { receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput() }
+  warehouseId.value = found.id
+  warehouseName.value = found.name || found.code || ''
+  warehouseCode.value = ''
+  showWarehouseChoices.value = false
+  search()
+}
+const chooseWarehouse = async () => {
+  warehouseChoices.value = await WarehouseApi.getWarehouseSimpleList()
+  showWarehouseChoices.value = true
+}
 const selectWarehouse = async () => {
   const raw = warehouseCode.value.trim()
   const match = /^WMS:WAREHOUSE:(\d+)$/i.exec(raw)
   const warehouses: WarehouseVO[] = await WarehouseApi.getWarehouseSimpleList()
   const found = warehouses.find((item) => match ? String(item.id) === match[1] : item.code === raw)
   if (!found?.id) { ElMessage.warning('未找到仓库，请扫描仓库二维码或输入仓库编号'); return }
-  if (warehouseId.value !== found.id && creatingReceipt.value && !(await confirmDiscard())) return
-  if (warehouseId.value !== found.id) { receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput() }
-  warehouseId.value = found.id
-  warehouseName.value = found.name || found.code || ''
-  warehouseCode.value = ''
-  search()
+  await applyWarehouse(found)
 }
 const clearWarehouse = async () => { if (creatingReceipt.value && !(await confirmDiscard())) return; warehouseId.value = undefined; warehouseName.value = ''; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); search() }
 const scanReceiptSku = async () => {
@@ -146,12 +163,14 @@ const scanReceiptSku = async () => {
     if (!balance || Number(balance.quantity) <= 0) { ElMessage.warning('该库位和批次没有此商品的可用库存'); return }
     available = Number(balance.quantity)
   }
-  const row = receiptRows.value.find((item) => item.sku.id === unique[0].id && item.locationId === selectedLocation.value?.id && item.batchNo === batchNo)
+  const matchingRows = receiptRows.value.filter((item) => item.sku.id === unique[0].id && item.locationId === selectedLocation.value?.id && item.batchNo === batchNo)
+  if (matchingRows.length > 1) { ElMessage.warning('该规格有多条明细，请手动调整对应数量'); return }
+  const row = matchingRows[0]
   if (row?.serialNos?.length) { ElMessage.warning('该明细已录入序列号，请继续扫描序列号'); return }
   if (row && tab.value === 'receipt' && (row.productionDate !== produced || row.expirationDate !== expires)) { ElMessage.warning('同一明细的批次日期不一致，请核对'); return }
   if (available !== undefined && (row?.quantity || 0) + 1 > available) { ElMessage.warning('数量超过所选库位和批次的库存'); return }
   if (row) row.quantity += 1
-  else receiptRows.value.push({ sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, batchNo, productionDate: produced, expirationDate: expires, available })
+  else receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, batchNo, productionDate: produced, expirationDate: expires, available, netLength: unique[0].netLength, grossLength: unique[0].grossLength, netWeight: unique[0].netWeight, grossWeight: unique[0].grossWeight, length: unique[0].length, width: unique[0].width, height: unique[0].height, price: unique[0].costPrice, salesPrice: unique[0].sellingPrice })
   receiptScan.value = ''
 }
 const scanLocation = async () => {
@@ -167,6 +186,8 @@ const scanLocation = async () => {
 }
 const saveReceipt = async () => {
   if (receiptType.value == null || !warehouseId.value || !receiptRows.value.length || receiptRows.value.some((row) => !row.quantity || row.quantity <= 0 || (row.available !== undefined && row.quantity > row.available))) { ElMessage.warning('请选择单据类型、仓库并填写有效商品数量'); return }
+  const numericFields = ['netLength', 'grossLength', 'netWeight', 'grossWeight', 'length', 'width', 'height', 'price', 'salesPrice'] as const
+  if (tab.value === 'receipt' && receiptRows.value.some((row) => numericFields.some((key) => row[key] != null && String(row[key]) !== '' && (!Number.isFinite(Number(row[key])) || Number(row[key]) < 0)))) { ElMessage.warning('尺寸、重量和价格不能小于零'); return }
   savingReceipt.value = true
   try {
     const seen = new Set<string>()
@@ -181,7 +202,7 @@ const saveReceipt = async () => {
         }
       }
     }
-    const data = { no: `PDA${Date.now()}${Math.floor(Math.random() * 1000)}`, type: receiptType.value, orderTime: String(Date.now()), warehouseId: warehouseId.value, details: receiptRows.value.map((row) => ({ skuId: row.sku.id, quantity: row.quantity, locationId: row.locationId, batchNo: row.batchNo, productionDate: row.productionDate, expirationDate: row.expirationDate, serialNos: row.serialNos?.length ? row.serialNos : undefined })) }
+    const data = { no: `PDA${Date.now()}${Math.floor(Math.random() * 1000)}`, type: receiptType.value, orderTime: String(Date.now()), warehouseId: warehouseId.value, details: receiptRows.value.map((row) => ({ skuId: row.sku.id, quantity: row.quantity, locationId: row.locationId, batchNo: row.batchNo, productionDate: row.productionDate, expirationDate: row.expirationDate, serialNos: row.serialNos?.length ? row.serialNos : undefined, ...(tab.value === 'receipt' ? { palletNo: row.palletNo, boxNo: row.boxNo, rollNo: row.rollNo, ...Object.fromEntries(numericFields.map((key) => [key, row[key] == null || String(row[key]) === '' ? undefined : Number(row[key])])) } : {}) })) }
     const id = tab.value === 'shipment' ? await ShipmentOrderApi.createShipmentOrder(data) : await ReceiptOrderApi.createReceiptOrder(data)
     ElMessage.success(`${tab.value === 'shipment' ? '出库' : '入库'}草稿已创建，请核对后完成`)
     creatingReceipt.value = false
@@ -327,11 +348,12 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <form class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描当前仓库的库位二维码" /><button>选择库位</button></form>
       <p>当前库位：{{ selectedLocation?.name || '未分配' }} <button v-if="selectedLocation" class="back" @click="selectedLocation = undefined">清除</button></p>
       <form class="search" @submit.prevent="scanReceiptSku"><input v-model="receiptScan" placeholder="扫描规格编号或商品条码" /><button>添加</button></form>
-      <article v-for="(row, index) in receiptRows" :key="`${row.sku.id}-${row.locationId || 0}-${row.batchNo || ''}`"><strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong><p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p><el-input-number v-model="row.quantity" :disabled="!!row.serialNos?.length" :min="0.01" :max="row.available" :precision="QUANTITY_PRECISION" /><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /><button class="back" @click="receiptRows.splice(index, 1)">删除</button></article>
+      <article v-for="(row, index) in receiptRows" :key="row.rowId"><strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong><p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p><el-input-number v-model="row.quantity" :disabled="!!row.serialNos?.length" :min="0.01" :max="row.available" :precision="QUANTITY_PRECISION" /><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /><details v-if="tab === 'receipt'"><summary>到货信息</summary><div class="arrival-grid"><label v-for="field in arrivalFields" :key="field.key">{{ field.label }}<input v-if="field.text" v-model="row[field.key]" maxlength="64" :placeholder="field.label" /><input v-else v-model.number="row[field.key]" type="number" min="0" step="any" :placeholder="field.label" /></label></div></details><button v-if="tab === 'receipt'" class="back" @click="receiptRows.push({ ...row, rowId: ++nextReceiptRowId, quantity: 1, serialNos: [], palletNo: undefined, boxNo: undefined, rollNo: undefined })">复制为新明细</button><button class="back" @click="receiptRows.splice(index, 1)">删除</button></article>
       <button class="primary" :disabled="savingReceipt" @click="saveReceipt">保存{{ tab === 'shipment' ? '出库' : '入库' }}草稿</button>
     </section>
     <template v-else-if="!selected">
       <form class="search" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="扫描仓库二维码或输入仓库编号" /><button>选择仓库</button></form>
+      <div class="content"><button class="back" @click="chooseWarehouse">从列表选择仓库</button><div v-if="showWarehouseChoices" class="warehouse-choices"><button v-for="warehouse in warehouseChoices" :key="warehouse.id" @click="applyWarehouse(warehouse)">{{ warehouse.name }}（{{ warehouse.code }}）</button><span v-if="!warehouseChoices.length">暂无仓库</span></div></div>
       <div v-if="warehouseId" class="content">当前仓库：{{ warehouseName }} <button class="back" @click="clearWarehouse">清除</button></div>
       <div v-if="tab === 'receipt' && warehouseId" class="content"><button v-hasPermi="['wms:receipt-order:create']" class="primary" @click="selectedLocation = undefined; receiptRows = []; clearBatchInput(); receiptType = getIntDictOptions(DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value; creatingReceipt = true">扫码新建入库</button></div>
       <div v-if="tab === 'shipment' && warehouseId" class="content"><button v-hasPermi="['wms:shipment-order:create']" class="primary" @click="selectedLocation = undefined; receiptRows = []; clearBatchInput(); receiptType = getIntDictOptions(DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE)[0]?.value; creatingReceipt = true">扫码新建出库</button></div>
@@ -355,4 +377,6 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 .pda { max-width: 640px; min-height: 100vh; margin: auto; background: #f4f7fb; color: #17263c; font-family: system-ui, sans-serif; } header { padding: 25px 20px 18px; display:flex; justify-content:space-between; align-items:center; background:#fff; } header small { color:#528ee8; font-weight:700; letter-spacing:.16em; } h1 { margin:4px 0; font-size:25px; } header a { color:#438ce7; } nav { display:flex; gap:8px; padding:12px 16px; background:#fff; } button { border:0; cursor:pointer; } nav button { flex:1; padding:12px; background:#f0f4f9; border-radius:10px; color:#56667b; } nav .active,.primary { background:#428ff3; color:white; } .search { display:flex; gap:8px; padding:16px; } .search input { flex:1; min-width:0; border:1px solid #dce5f1; border-radius:10px; padding:12px; font-size:16px; } .search button,.primary { background:#428ff3; color:white; padding:12px 20px; border-radius:10px; } .content { padding:0 16px 30px; } .hint, p, small { color:#77879c; } article { background:white; border-radius:14px; padding:17px; margin-bottom:10px; box-shadow:0 3px 14px #203f6810; } article p { margin:10px 0; } article b { color:#287bdc; } .status { float:right; color:#418ae5; } .pagination { display:flex; justify-content:space-between; align-items:center; padding:12px 0; } .pagination button,.back { background:white; color:#438ce7; border-radius:8px; padding:10px; } .primary { width:100%; margin-top:12px; }
 .dashboard { padding: 20px 16px; } .welcome { background: #245eea; color: white; padding: 26px 22px; border-radius: 18px; } .welcome p { color: #dbe8ff; margin: 0; } .welcome h2 { margin: 16px 0 8px; font-size: 24px; } .welcome span { color: #dbe8ff; } .dashboard > h2 { font-size: 18px; margin: 28px 0 14px; } .work-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; } .work-grid button { display: grid; text-align: left; gap: 8px; background: white; padding: 18px; border-radius: 14px; color: #17263c; } .work-grid button span { color: #245eea; font-size: 26px; } .work-grid button strong { font-size: 17px; } .home-link { margin: 10px 16px 0; background: transparent; color: #245eea; padding: 8px 0; }
 .overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 20px; } .overview div { display: grid; gap: 8px; text-align: center; } .overview strong { font-size: 24px; }
+.arrival-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; } .arrival-grid label { display:grid; gap:5px; color:#56667b; font-size:13px; } .arrival-grid input { min-width:0; width:100%; border:1px solid #dce5f1; border-radius:8px; padding:9px; font-size:16px; }
+.warehouse-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; } .warehouse-choices button { padding:12px; text-align:left; background:white; border:1px solid #dce5f1; border-radius:8px; color:#17263c; }
 </style>

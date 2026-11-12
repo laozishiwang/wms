@@ -56,13 +56,13 @@
         </el-descriptions-item>
       </el-descriptions>
 
-      <div class="mb-16px mt-24px text-18px font-bold">商品明细</div>
+      <div class="mb-16px mt-24px text-18px font-bold">物品明细</div>
       <el-table :data="detailRows" :summary-method="getSummaries" border show-summary>
-        <el-table-column label="商品名称" min-width="180" prop="itemName">
+        <el-table-column label="物品名称" min-width="180" prop="itemName">
           <template #default="scope">
             <div>{{ scope.row.itemName || '-' }}</div>
             <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
-              商品编号：{{ scope.row.itemCode }}
+              物品编号：{{ scope.row.itemCode }}
             </div>
           </template>
         </el-table-column>
@@ -74,6 +74,7 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column label="库位" min-width="180"><template #default="{ row }">{{ locationLabel(row.locationId) }}</template></el-table-column>
         <el-table-column label="批次号" prop="batchNo" min-width="140" />
         <el-table-column label="托盘/箱/卷号" min-width="180"><template #default="{ row }">托盘：{{ row.palletNo || '-' }}<br />箱：{{ row.boxNo || '-' }}<br />卷：{{ row.rollNo || '-' }}</template></el-table-column>
         <el-table-column label="实际尺寸与重量" min-width="190"><template #default="{ row }">净长/毛长(cm)：{{ row.netLength ?? '-' }} / {{ row.grossLength ?? '-' }}<br />净重/毛重(kg)：{{ row.netWeight ?? '-' }} / {{ row.grossWeight ?? '-' }}<br />长/宽/高(cm)：{{ row.length ?? '-' }} / {{ row.width ?? '-' }} / {{ row.height ?? '-' }}</template></el-table-column>
@@ -111,6 +112,8 @@ import { formatNullableDate } from '@/utils/formatTime'
 import { DICT_TYPE } from '@/utils/dict'
 import { ReceiptOrderApi, ReceiptOrderVO } from '@/api/wms/order/receipt'
 import { ReceiptOrderDetailVO } from '@/api/wms/order/receipt/detail'
+import request from '@/config/axios'
+import { checkPermi } from '@/utils/permission'
 import {
   formatPrice,
   formatQuantity,
@@ -129,6 +132,12 @@ interface DetailRow extends ReceiptOrderDetailVO {
 const loading = ref(false) // 加载中
 const dialogVisible = ref(false) // 弹窗的是否展示
 const detailData = ref<ReceiptOrderVO>({}) // 详情数据
+const locations = ref<Array<{ id: number; code: string; name: string; type: string }>>([])
+const locationLabel = (id?: number) => {
+  if (!id) return '未分配'
+  const location = locations.value.find((item) => item.id === id)
+  return location ? `${location.name}（${location.code}）` : `库位 #${id}`
+}
 const detailRows = computed<DetailRow[]>(() =>
   (detailData.value.details || []).map((detail) => ({
     ...detail,
@@ -157,7 +166,11 @@ const open = async (id: number) => {
   dialogVisible.value = true
   loading.value = true
   try {
+    locations.value = []
     detailData.value = await ReceiptOrderApi.getReceiptOrder(id)
+    if (detailData.value.warehouseId && checkPermi(['wms:warehouse:query'])) {
+      locations.value = await request.get({ url: '/wms/storage-place/list', params: { warehouseId: detailData.value.warehouseId } })
+    }
   } finally {
     loading.value = false
   }
