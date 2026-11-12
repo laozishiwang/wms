@@ -18,6 +18,8 @@ import cn.iocoder.yudao.module.wms.service.inventory.dto.WmsInventoryChangeReqDT
 import cn.iocoder.yudao.module.wms.service.md.merchant.WmsMerchantService;
 import cn.iocoder.yudao.module.wms.service.md.warehouse.WmsWarehouseService;
 import jakarta.annotation.Resource;
+import cn.iocoder.yudao.module.system.api.dict.DictDataApi;
+import java.util.Objects;
 import cn.iocoder.yudao.module.wms.service.approval.WmsApprovalGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,7 @@ import static cn.iocoder.yudao.module.wms.enums.ErrorCodeConstants.*;
 public class WmsReceiptOrderServiceImpl implements WmsReceiptOrderService {
 
     @Resource private WmsApprovalGuard approvalGuard;
+    @Resource private DictDataApi dictDataApi;
 
     @Resource
     private WmsReceiptOrderMapper receiptOrderMapper;
@@ -57,6 +60,7 @@ public class WmsReceiptOrderServiceImpl implements WmsReceiptOrderService {
     public Long createReceiptOrder(WmsReceiptOrderSaveReqVO createReqVO) {
         // 1. 校验入库单保存数据
         validateReceiptOrderSaveData(createReqVO);
+        dictDataApi.validateDictDataList("wms_receipt_order_type", List.of(createReqVO.getType().toString()));
 
         // 2.1 插入入库单
         WmsReceiptOrderDO order = BeanUtils.toBean(createReqVO, WmsReceiptOrderDO.class);
@@ -72,8 +76,11 @@ public class WmsReceiptOrderServiceImpl implements WmsReceiptOrderService {
     @Transactional(rollbackFor = Exception.class)
     public void updateReceiptOrder(WmsReceiptOrderSaveReqVO updateReqVO) {
         // 1. 校验入库单保存数据
-        validateReceiptOrderPrepare(updateReqVO.getId());
+        var existingOrder = validateReceiptOrderPrepare(updateReqVO.getId());
         validateReceiptOrderSaveData(updateReqVO);
+        if (!Objects.equals(existingOrder.getType(), updateReqVO.getType())) {
+            dictDataApi.validateDictDataList("wms_receipt_order_type", List.of(updateReqVO.getType().toString()));
+        }
 
         // 2.1 更新入库单
         WmsReceiptOrderDO updateObj = BeanUtils.toBean(updateReqVO, WmsReceiptOrderDO.class)

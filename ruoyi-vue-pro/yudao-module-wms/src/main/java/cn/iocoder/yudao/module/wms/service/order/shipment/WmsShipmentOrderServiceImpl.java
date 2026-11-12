@@ -18,6 +18,8 @@ import cn.iocoder.yudao.module.wms.service.inventory.dto.WmsInventoryChangeReqDT
 import cn.iocoder.yudao.module.wms.service.md.merchant.WmsMerchantService;
 import cn.iocoder.yudao.module.wms.service.md.warehouse.WmsWarehouseService;
 import jakarta.annotation.Resource;
+import cn.iocoder.yudao.module.system.api.dict.DictDataApi;
+import java.util.Objects;
 import cn.iocoder.yudao.module.wms.service.approval.WmsApprovalGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,7 @@ import static cn.iocoder.yudao.module.wms.enums.ErrorCodeConstants.*;
 public class WmsShipmentOrderServiceImpl implements WmsShipmentOrderService {
 
     @Resource private WmsApprovalGuard approvalGuard;
+    @Resource private DictDataApi dictDataApi;
 
     @Resource
     private WmsShipmentOrderMapper shipmentOrderMapper;
@@ -57,6 +60,7 @@ public class WmsShipmentOrderServiceImpl implements WmsShipmentOrderService {
     public Long createShipmentOrder(WmsShipmentOrderSaveReqVO createReqVO) {
         // 1. 校验出库单保存数据
         validateShipmentOrderSaveData(createReqVO);
+        dictDataApi.validateDictDataList("wms_shipment_order_type", List.of(createReqVO.getType().toString()));
 
         // 2.1 插入出库单
         WmsShipmentOrderDO order = BeanUtils.toBean(createReqVO, WmsShipmentOrderDO.class);
@@ -72,8 +76,11 @@ public class WmsShipmentOrderServiceImpl implements WmsShipmentOrderService {
     @Transactional(rollbackFor = Exception.class)
     public void updateShipmentOrder(WmsShipmentOrderSaveReqVO updateReqVO) {
         // 1. 校验出库单保存数据
-        validateShipmentOrderPrepare(updateReqVO.getId());
+        var existingOrder = validateShipmentOrderPrepare(updateReqVO.getId());
         validateShipmentOrderSaveData(updateReqVO);
+        if (!Objects.equals(existingOrder.getType(), updateReqVO.getType())) {
+            dictDataApi.validateDictDataList("wms_shipment_order_type", List.of(updateReqVO.getType().toString()));
+        }
 
         // 2.1 更新出库单
         WmsShipmentOrderDO updateObj = BeanUtils.toBean(updateReqVO, WmsShipmentOrderDO.class)

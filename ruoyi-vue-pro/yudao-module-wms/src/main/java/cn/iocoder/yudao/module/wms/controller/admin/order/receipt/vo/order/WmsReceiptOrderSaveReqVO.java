@@ -27,7 +27,6 @@ public class WmsReceiptOrderSaveReqVO {
 
     @Schema(description = "入库类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "101")
     @NotNull(message = "入库类型不能为空")
-    @cn.iocoder.yudao.framework.dict.validation.InDict(type = "wms_receipt_order_type")
     private Integer type;
 
     @Schema(description = "单据日期", requiredMode = Schema.RequiredMode.REQUIRED)

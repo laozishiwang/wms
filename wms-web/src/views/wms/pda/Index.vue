@@ -12,7 +12,7 @@ import { CheckOrderApi } from '@/api/wms/order/check'
 import { WmsHomeStatisticsApi, type WmsHomeOrderSummaryVO } from '@/api/wms/home'
 import { checkPermi } from '@/utils/permission'
 import { WarehouseApi, type WarehouseVO } from '@/api/wms/md/warehouse'
-import type { ItemSkuVO } from '@/api/wms/md/item/sku'
+import { ItemSkuApi, type ItemSkuVO } from '@/api/wms/md/item/sku'
 import request from '@/config/axios'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { QUANTITY_PRECISION } from '@/views/wms/utils/format'
@@ -52,6 +52,21 @@ const showWarehouseChoices = ref(false)
 const creatingReceipt = ref(false)
 const receiptType = ref<number | undefined>(101)
 const receiptScan = ref('')
+const skuPickerOpen = ref(false)
+const skuKeyword = ref('')
+const skuPage = ref(1)
+const skuTotal = ref(0)
+const skuRows = ref<ItemSkuVO[]>([])
+const skuLoading = ref(false)
+const loadSkus = async () => {
+  skuLoading.value = true
+  try {
+    const result = await ItemSkuApi.getItemSkuPage({ pageNo: skuPage.value, pageSize: 20, itemName: skuKeyword.value.trim() || undefined })
+    skuRows.value = result.list
+    skuTotal.value = result.total
+  } finally { skuLoading.value = false }
+}
+const openSkuPicker = async () => { skuPickerOpen.value = true; skuPage.value = 1; skuKeyword.value = ''; await loadSkus() }
 let nextReceiptRowId = 0
 const receiptRows = ref<Array<{ rowId: number; sku: ItemSkuVO; quantity: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[]; palletNo?: string; boxNo?: string; rollNo?: string; netLength?: number; grossLength?: number; netWeight?: number; grossWeight?: number; length?: number; width?: number; height?: number; price?: number; salesPrice?: number }>>([])
 const arrivalFields: Array<{ key: 'palletNo' | 'boxNo' | 'rollNo' | 'netLength' | 'grossLength' | 'netWeight' | 'grossWeight' | 'length' | 'width' | 'height' | 'price' | 'salesPrice'; label: string; text?: boolean }> = [
@@ -172,6 +187,12 @@ const scanReceiptSku = async () => {
   if (row) row.quantity += 1
   else receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, batchNo, productionDate: produced, expirationDate: expires, available, netLength: unique[0].netLength, grossLength: unique[0].grossLength, netWeight: unique[0].netWeight, grossWeight: unique[0].grossWeight, length: unique[0].length, width: unique[0].width, height: unique[0].height, price: unique[0].costPrice, salesPrice: unique[0].sellingPrice })
   receiptScan.value = ''
+}
+const selectSku = async (sku: ItemSkuVO) => {
+  if (!sku.code) { ElMessage.warning('规格编号为空，无法添加'); return }
+  receiptScan.value = sku.code
+  await scanReceiptSku()
+  if (!receiptScan.value) skuPickerOpen.value = false
 }
 const scanLocation = async () => {
   const currentWarehouse = (tab.value === 'movement' ? selected.value?.sourceWarehouseId : selected.value?.warehouseId) || warehouseId.value
@@ -348,6 +369,15 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <form class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描当前仓库的库位二维码" /><button>选择库位</button></form>
       <p>当前库位：{{ selectedLocation?.name || '未分配' }} <button v-if="selectedLocation" class="back" @click="selectedLocation = undefined">清除</button></p>
       <form class="search" @submit.prevent="scanReceiptSku"><input v-model="receiptScan" placeholder="扫描规格编号或商品条码" /><button>添加</button></form>
+      <button class="back" @click="openSkuPicker">从物品列表选择</button>
+      <el-dialog v-model="skuPickerOpen" title="选择物品" width="min(520px, 95vw)" append-to-body>
+        <form class="search" @submit.prevent="skuPage = 1; loadSkus()"><input v-model="skuKeyword" placeholder="输入物品名称" /><button>查询</button></form>
+        <div v-loading="skuLoading" class="sku-picker">
+          <button v-for="sku in skuRows" :key="sku.id" class="sku-option" @click="selectSku(sku)"><strong>{{ sku.itemName }} {{ sku.name }}</strong><span>规格编号：{{ sku.code }}</span></button>
+          <el-empty v-if="!skuLoading && !skuRows.length" description="没有找到物品" />
+        </div>
+        <div class="pagination"><button :disabled="skuPage === 1" @click="skuPage--; loadSkus()">上一页</button><span>{{ skuPage }} / {{ Math.max(1, Math.ceil(skuTotal / 20)) }}</span><button :disabled="skuPage * 20 >= skuTotal" @click="skuPage++; loadSkus()">下一页</button></div>
+      </el-dialog>
       <article v-for="(row, index) in receiptRows" :key="row.rowId"><strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong><p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p><el-input-number v-model="row.quantity" :disabled="!!row.serialNos?.length" :min="0.01" :max="row.available" :precision="QUANTITY_PRECISION" /><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /><details v-if="tab === 'receipt'"><summary>到货信息</summary><div class="arrival-grid"><label v-for="field in arrivalFields" :key="field.key">{{ field.label }}<input v-if="field.text" v-model="row[field.key]" maxlength="64" :placeholder="field.label" /><input v-else v-model.number="row[field.key]" type="number" min="0" step="any" :placeholder="field.label" /></label></div></details><button v-if="tab === 'receipt'" class="back" @click="receiptRows.push({ ...row, rowId: ++nextReceiptRowId, quantity: 1, serialNos: [], palletNo: undefined, boxNo: undefined, rollNo: undefined })">复制为新明细</button><button class="back" @click="receiptRows.splice(index, 1)">删除</button></article>
       <button class="primary" :disabled="savingReceipt" @click="saveReceipt">保存{{ tab === 'shipment' ? '出库' : '入库' }}草稿</button>
     </section>
@@ -379,4 +409,5 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 .overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 20px; } .overview div { display: grid; gap: 8px; text-align: center; } .overview strong { font-size: 24px; }
 .arrival-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; } .arrival-grid label { display:grid; gap:5px; color:#56667b; font-size:13px; } .arrival-grid input { min-width:0; width:100%; border:1px solid #dce5f1; border-radius:8px; padding:9px; font-size:16px; }
 .warehouse-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; } .warehouse-choices button { padding:12px; text-align:left; background:white; border:1px solid #dce5f1; border-radius:8px; color:#17263c; }
+.sku-picker { max-height: 48vh; overflow-y: auto; } .sku-option { display:grid; width:100%; gap:6px; text-align:left; padding:12px; background:white; border-bottom:1px solid #e5ebf3; color:#17263c; } .sku-option span { color:#77879c; font-size:13px; }
 </style>
