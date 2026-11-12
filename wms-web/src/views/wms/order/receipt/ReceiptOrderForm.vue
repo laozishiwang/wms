@@ -81,19 +81,21 @@
             </el-button>
           </span>
         </el-tooltip>
+        <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
         <el-button plain @click="downloadImportTemplate">下载导入模板</el-button>
         <el-button plain :disabled="!formData.warehouseId" @click="importFileRef?.click()">导入明细</el-button>
         <span class="text-12px text-gray-500">模板以规格编号匹配物品；多个序列号用逗号或换行分隔</span>
         <input ref="importFileRef" type="file" accept=".xls,.xlsx" hidden @change="importDetails" />
       </div>
       <el-table
+        :key="columnOrder.join('|')"
         :data="formData.details"
         :summary-method="getDetailSummaries"
         border
         empty-text="暂无物品明细"
         show-summary
       >
-        <el-table-column label="物品信息" min-width="220">
+        <el-table-column label="物品信息" fixed="left" min-width="220">
           <template #default="scope">
             <div>{{ scope.row.itemName || '-' }}</div>
             <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
@@ -101,7 +103,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="规格信息" min-width="220">
+        <template v-for="column in columnOrder" :key="column">
+        <el-table-column v-if="column === 'sku'" label="规格信息" min-width="220">
           <template #default="scope">
             <div>{{ scope.row.skuName || '-' }}</div>
             <div v-if="scope.row.skuCode" class="text-12px text-gray-500">
@@ -109,18 +112,18 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="序列号" width="130"><template #default="scope"><SerialEditor v-model="scope.row.serialNos" /></template></el-table-column>
-        <el-table-column label="库位" min-width="180">
+        <el-table-column v-if="column === 'serial'" label="序列号" width="130"><template #default="scope"><SerialEditor v-model="scope.row.serialNos" /></template></el-table-column>
+        <el-table-column v-if="column === 'location'" label="库位" min-width="180">
           <template #default="scope">
             <InboundLocationSelect v-model="scope.row.locationId" :warehouse-id="formData.warehouseId" />
           </template>
         </el-table-column>
-        <el-table-column label="批次号" min-width="160">
+        <el-table-column v-if="column === 'batch'" label="批次号" min-width="160">
           <template #default="scope">
             <el-input v-model="scope.row.batchNo" maxlength="64" placeholder="留空为无批次库存" />
           </template>
         </el-table-column>
-        <el-table-column label="托盘号 / 箱号 / 卷号" width="180">
+        <el-table-column v-if="column === 'package'" label="托盘号 / 箱号 / 卷号" width="180">
           <template #default="scope">
             <div class="receipt-field-stack">
               <el-input v-model="scope.row.palletNo" maxlength="64" placeholder="托盘号" aria-label="托盘号" />
@@ -129,7 +132,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="净长 / 毛长 (cm)" width="160">
+        <el-table-column v-if="column === 'netLength'" label="净长 / 毛长 (cm)" width="160">
           <template #default="scope">
             <div class="receipt-field-stack">
               <el-input-number v-model="scope.row.netLength" :controls="false" :min="0" class="!w-1/1" placeholder="净长" aria-label="净长" />
@@ -137,7 +140,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="净重 / 毛重 (kg)" width="160">
+        <el-table-column v-if="column === 'weight'" label="净重 / 毛重 (kg)" width="160">
           <template #default="scope">
             <div class="receipt-field-stack">
               <el-input-number v-model="scope.row.netWeight" :controls="false" :min="0" class="!w-1/1" placeholder="净重" aria-label="净重" />
@@ -145,7 +148,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="长 / 宽 / 高 (cm)" width="150">
+        <el-table-column v-if="column === 'dimensions'" label="长 / 宽 / 高 (cm)" width="150">
           <template #default="scope">
             <div class="receipt-field-stack">
               <el-input-number v-model="scope.row.length" :controls="false" :min="0" class="!w-1/1" placeholder="长" aria-label="长" />
@@ -154,7 +157,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="生产 / 到期日期" width="180">
+        <el-table-column v-if="column === 'dates'" label="生产 / 到期日期" width="180">
           <template #default="scope">
             <div class="receipt-field-stack">
               <el-date-picker v-model="scope.row.productionDate" type="date" value-format="YYYY-MM-DD HH:mm:ss" placeholder="生产日期" aria-label="生产日期" class="!w-1/1" />
@@ -162,7 +165,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="入库数量" prop="quantity" width="160">
+        <el-table-column v-if="column === 'quantity'" label="入库数量" prop="quantity" width="160">
           <template #default="scope">
             <el-input-number
               v-model="scope.row.quantity"
@@ -175,7 +178,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="成本价 / 销售价 (元)" prop="price" width="170">
+        <el-table-column v-if="column === 'price'" label="成本价 / 销售价 (元)" prop="price" width="170">
           <template #default="scope">
             <div class="receipt-field-stack">
             <el-input-number
@@ -192,7 +195,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="金额(元)" prop="totalPrice" width="160">
+        <el-table-column v-if="column === 'total'" label="金额(元)" prop="totalPrice" width="160">
           <template #default="scope">
             <el-input-number
               v-model="scope.row.totalPrice"
@@ -205,6 +208,7 @@
             />
           </template>
         </el-table-column>
+        </template>
         <el-table-column align="center" fixed="right" label="操作" width="120">
           <template #default="scope">
             <el-button link type="primary" @click="copyDetail(scope.row)">复制</el-button>
@@ -214,6 +218,7 @@
       </el-table>
       <ItemSkuSelect ref="skuSelectRef" @change="handleSelectSku" />
       <ReceiptTypeManager ref="typeManagerRef" />
+      <ReceiptColumnSettings ref="columnSettingsRef" v-model="columnOrder" :options="columnOptions" />
     </el-form>
     <template #footer>
       <div class="flex items-center justify-between">
@@ -260,7 +265,29 @@ import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import ReceiptTypeManager from './ReceiptTypeManager.vue'
+import ReceiptColumnSettings from './ReceiptColumnSettings.vue'
+import { getCurrentUserId, getTenantId } from '@/utils/auth'
 const typeManagerRef = ref<InstanceType<typeof ReceiptTypeManager>>()
+const columnSettingsRef = ref<InstanceType<typeof ReceiptColumnSettings>>()
+const columnOptions = [
+  { key: 'sku', label: '规格信息' }, { key: 'serial', label: '序列号' },
+  { key: 'location', label: '库位' }, { key: 'batch', label: '批次号' },
+  { key: 'package', label: '托盘号 / 箱号 / 卷号' }, { key: 'netLength', label: '净长 / 毛长' },
+  { key: 'weight', label: '净重 / 毛重' }, { key: 'dimensions', label: '长 / 宽 / 高' },
+  { key: 'dates', label: '生产 / 到期日期' }, { key: 'quantity', label: '入库数量' },
+  { key: 'price', label: '成本价 / 销售价' }, { key: 'total', label: '金额' }
+]
+const columnOrder = ref(columnOptions.map((item) => item.key))
+const columnStorageKey = () => `wms-receipt-columns:${getTenantId() || 0}:${getCurrentUserId()}`
+const loadColumnOrder = () => {
+  const defaults = columnOptions.map((item) => item.key)
+  try {
+    const stored = JSON.parse(localStorage.getItem(columnStorageKey()) || '[]')
+    const valid = Array.isArray(stored) ? stored.filter((key): key is string => defaults.includes(key)) : []
+    columnOrder.value = [...new Set(valid), ...defaults.filter((key) => !valid.includes(key))]
+  } catch { columnOrder.value = defaults }
+}
+watch(columnOrder, (value) => localStorage.setItem(columnStorageKey(), JSON.stringify(value)))
 import InboundLocationSelect from '@/views/wms/inventory/components/InboundLocationSelect.vue'
 import { FormRules } from 'element-plus'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
@@ -327,6 +354,7 @@ const isSavedPrepareOrder = computed(
 
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
+  loadColumnOrder()
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   dialogVisible.value = true
   dialogTitle.value = t('action.' + type)
