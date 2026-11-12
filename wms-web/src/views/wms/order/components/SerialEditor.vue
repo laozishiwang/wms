@@ -24,7 +24,7 @@ const save = () => {
 <template>
   <el-button link type="primary" @click="open">序列号 ({{ model?.length || 0 }})</el-button>
   <el-dialog v-model="visible" title="录入序列号" width="min(520px, 94vw)" append-to-body>
-    <el-input v-model="scan" placeholder="扫描或输入序列号后按回车" @keyup.enter="add" />
+    <el-input v-model="scan" placeholder="扫描或输入序列号后按回车" @keydown.enter.prevent="add" />
     <el-input v-model="text" class="mt-12px" type="textarea" :rows="8" placeholder="每行一个序列号" />
     <p>已录入 {{ lines.length }} 个</p>
     <template #footer><el-button @click="visible = false">取消</el-button><el-button type="primary" @click="save">确定</el-button></template>
