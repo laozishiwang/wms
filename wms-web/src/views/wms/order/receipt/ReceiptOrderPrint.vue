@@ -45,7 +45,7 @@
             <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">商品信息</th>
             <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">规格信息</th>
             <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">数量</th>
-            <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">单价(元)</th>
+            <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">成本价(元)</th>
             <th class="border border-solid border-#dcdfe6 bg-#f5f7fa p-8px text-left">金额(元)</th>
           </tr>
         </thead>
@@ -59,6 +59,11 @@
               <div>{{ detail.skuName || '-' }}</div>
               <div v-if="detail.skuCode" class="text-12px">编号：{{ detail.skuCode }}</div>
               <div v-if="detail.batchNo" class="text-12px">批次：{{ detail.batchNo }}</div>
+              <div v-if="detail.palletNo || detail.boxNo || detail.rollNo" class="text-12px">托盘/箱/卷：{{ detail.palletNo || '-' }} / {{ detail.boxNo || '-' }} / {{ detail.rollNo || '-' }}</div>
+              <div v-if="detail.netLength != null || detail.grossLength != null" class="text-12px">净长/毛长(cm)：{{ detail.netLength ?? '-' }} / {{ detail.grossLength ?? '-' }}</div>
+              <div v-if="detail.netWeight != null || detail.grossWeight != null" class="text-12px">净重/毛重(kg)：{{ detail.netWeight ?? '-' }} / {{ detail.grossWeight ?? '-' }}</div>
+              <div v-if="detail.length != null || detail.width != null || detail.height != null" class="text-12px">长/宽/高(cm)：{{ detail.length ?? '-' }} / {{ detail.width ?? '-' }} / {{ detail.height ?? '-' }}</div>
+              <div v-if="detail.salesPrice != null" class="text-12px">销售价(元)：{{ formatPrice(detail.salesPrice) }}</div>
               <div v-if="detail.serialNos?.length" class="text-12px">序列号：{{ detail.serialNos.join('，') }}</div>
             </td>
             <td class="border border-solid border-#dcdfe6 p-8px text-right">

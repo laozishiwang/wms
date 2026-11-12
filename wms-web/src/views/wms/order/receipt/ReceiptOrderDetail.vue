@@ -75,6 +75,9 @@
           </template>
         </el-table-column>
         <el-table-column label="批次号" prop="batchNo" min-width="140" />
+        <el-table-column label="托盘/箱/卷号" min-width="180"><template #default="{ row }">托盘：{{ row.palletNo || '-' }}<br />箱：{{ row.boxNo || '-' }}<br />卷：{{ row.rollNo || '-' }}</template></el-table-column>
+        <el-table-column label="实际尺寸与重量" min-width="190"><template #default="{ row }">净长/毛长(cm)：{{ row.netLength ?? '-' }} / {{ row.grossLength ?? '-' }}<br />净重/毛重(kg)：{{ row.netWeight ?? '-' }} / {{ row.grossWeight ?? '-' }}<br />长/宽/高(cm)：{{ row.length ?? '-' }} / {{ row.width ?? '-' }} / {{ row.height ?? '-' }}</template></el-table-column>
+        <el-table-column label="销售价(元)" min-width="120"><template #default="{ row }">{{ formatPrice(row.salesPrice) || '-' }}</template></el-table-column>
         <el-table-column label="序列号" min-width="200"><template #default="scope">{{ scope.row.serialNos?.join('、') || '-' }}</template></el-table-column>
         <el-table-column label="生产日期" min-width="150">
           <template #default="scope">{{ scope.row.productionDate ? formatNullableDate(scope.row.productionDate) : '-' }}</template>
@@ -88,7 +91,7 @@
           </template>
         </el-table-column>
         <el-table-column align="center" label="单位" prop="unit" width="100" />
-        <el-table-column align="right" label="单价" prop="price" width="140">
+        <el-table-column align="right" label="成本价" prop="price" width="140">
           <template #default="scope">
             {{ formatPrice(scope.row.price) || '-' }}
           </template>

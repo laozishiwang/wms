@@ -9,6 +9,8 @@ import { ShipmentOrderApi } from '@/api/wms/order/shipment'
 import { InventoryApi } from '@/api/wms/inventory'
 import { MovementOrderApi } from '@/api/wms/order/movement'
 import { CheckOrderApi } from '@/api/wms/order/check'
+import { WmsHomeStatisticsApi, type WmsHomeOrderSummaryVO } from '@/api/wms/home'
+import { checkPermi } from '@/utils/permission'
 import { WarehouseApi, type WarehouseVO } from '@/api/wms/md/warehouse'
 import type { ItemSkuVO } from '@/api/wms/md/item/sku'
 import request from '@/config/axios'
@@ -30,6 +32,10 @@ const logout = async () => {
 
 type Tab = 'receipt' | 'shipment' | 'movement' | 'check' | 'inventory'
 const tab = ref<Tab>('receipt')
+const home = ref(true)
+const summary = ref<WmsHomeOrderSummaryVO[]>([])
+const canViewSummary = checkPermi(['wms:home:query'])
+const summaryCount = (type: number) => summary.value.find((item) => item.type === type)?.total ?? '—'
 const keyword = ref('')
 const rows = ref<any[]>([])
 const details = ref<any[]>([])
@@ -86,6 +92,15 @@ const confirmDiscard = async () => {
 const changeTab = async (value: Tab) => {
   if (value === tab.value || !(await confirmDiscard())) return
   tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); load()
+}
+const openWork = async (value: Tab) => {
+  if (!home.value) { await changeTab(value); return }
+  home.value = false; tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false
+  await load()
+}
+const goHome = async () => {
+  if (!(await confirmDiscard())) return
+  home.value = true; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []
 }
 const backToList = async () => { if (await confirmDiscard()) selected.value = undefined }
 onBeforeRouteLeave(() => confirmDiscard())
@@ -288,12 +303,19 @@ const complete = async () => {
   selected.value = undefined
   await load()
 }
-onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).enabled; await load() })
+onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).enabled; if (canViewSummary) summary.value = await WmsHomeStatisticsApi.getOrderSummary() })
 </script>
 
 <template>
   <main class="pda">
-    <header><div><small>WAREHOUSE</small><h1>移动仓库</h1></div><button @click="logout">退出登录</button></header>
+    <header><div><h1>{{ home ? '工作台' : labels[tab] }}</h1></div><button @click="logout">退出登录</button></header>
+    <section v-if="home" class="dashboard">
+      <div v-if="canViewSummary" class="welcome"><p>单据总览</p><div class="overview"><div><span>入库</span><strong>{{ summaryCount(1) }}</strong></div><div><span>出库</span><strong>{{ summaryCount(2) }}</strong></div><div><span>移库</span><strong>{{ summaryCount(3) }}</strong></div><div><span>盘库</span><strong>{{ summaryCount(4) }}</strong></div></div></div>
+      <h2>常用操作</h2>
+      <div class="work-grid"><button v-for="(label, key) in labels" :key="key" @click="openWork(key as Tab)"><span>{{ { receipt: '↓', shipment: '↑', movement: '↔', check: '✓', inventory: '▤' }[key] }}</span><strong>{{ label }}</strong><small>{{ key === 'inventory' ? '查看库存' : '查看单据' }}</small></button></div>
+    </section>
+    <template v-else>
+    <button class="home-link" @click="goHome">‹ 工作台</button>
     <nav><button v-for="(label, key) in labels" :key="key" :class="{ active: tab === key }" @click="changeTab(key as Tab)">{{ label }}</button></nav>
     <section v-if="creatingReceipt" class="content">
       <button class="back" @click="cancelReceipt">‹ 返回列表</button>
@@ -325,9 +347,12 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       </div>
     </template>
     <section v-else class="content"><ApprovalActions v-if="(approvalEnabled || selected.status === 1) && !dirty && tab !== 'inventory'" :before-submit="canSubmitApproval" :type="tab" :id="selected.id" :status="selected.status" @changed="selected = undefined; load()" /><button class="back" @click="backToList">‹ 返回列表</button><h2>{{ selected.no }}</h2><p>{{ tab === 'movement' ? `${selected.sourceWarehouseName} → ${selected.targetWarehouseName}` : selected.warehouseName }}</p><form v-if="tab === 'check' && selected.status === 0" class="search" @submit.prevent="scanCheck"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号，数量加 1" /><button>扫码录入</button></form><p v-if="tab === 'check' && selected.status === 0">扫码会在当前实盘数量上累加。<button class="back" @click="resetCheck">实盘数量清零</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check' || tab === 'movement') && selected.status === 0" class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描库位二维码以核对对应明细" /><button>选择库位</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check' || tab === 'movement') && selectedLocation">核对库位：{{ selectedLocation.name }} <button class="back" @click="selectedLocation = undefined">清除</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0" class="search" @submit.prevent="scanOrder"><input v-model="scanCode" placeholder="扫描序列号或 SKU 编号" /><button>扫码核对</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">核对数据仅在本次操作中保留</p><article v-for="item in visibleDetails" :key="item.id"><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p><p v-if="item.batchNo">批次：{{ item.batchNo }}</p><p v-if="item.locationId">库位 ID：{{ item.locationId }}</p><p v-if="tab === 'movement'">来源库位：{{ item.sourceLocationId || '未分配' }} → 目标库位：{{ item.targetLocationId || '未分配' }}</p><b>{{ tab === 'check' ? '账面数量' : '数量' }} {{ item.quantity }} {{ item.unit }}</b><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">已核对 <el-input-number v-if="!item.serialNos?.length" v-model="verified[item.id]" :min="0" :max="Number(item.quantity)" :precision="QUANTITY_PRECISION" :controls="false" /><span v-else>{{ verified[item.id] || 0 }}</span> / {{ item.quantity }}</p><p v-if="tab === 'check' && selected.status === 0">实盘序列号 <SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></p><p v-if="tab === 'check'">实盘数量 <el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><span v-else>{{ item.checkQuantity }}</span></p></article><button v-if="tab === 'check' && selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="saveCheck">保存盘点数量</button><button v-if="selected.status === 0 && !approvalEnabled" v-hasPermi="[`wms:${tab}-order:complete`]" class="primary" @click="complete">确认完成{{ labels[tab] }}</button></section>
+    </template>
   </main>
 </template>
 
 <style scoped>
 .pda { max-width: 640px; min-height: 100vh; margin: auto; background: #f4f7fb; color: #17263c; font-family: system-ui, sans-serif; } header { padding: 25px 20px 18px; display:flex; justify-content:space-between; align-items:center; background:#fff; } header small { color:#528ee8; font-weight:700; letter-spacing:.16em; } h1 { margin:4px 0; font-size:25px; } header a { color:#438ce7; } nav { display:flex; gap:8px; padding:12px 16px; background:#fff; } button { border:0; cursor:pointer; } nav button { flex:1; padding:12px; background:#f0f4f9; border-radius:10px; color:#56667b; } nav .active,.primary { background:#428ff3; color:white; } .search { display:flex; gap:8px; padding:16px; } .search input { flex:1; min-width:0; border:1px solid #dce5f1; border-radius:10px; padding:12px; font-size:16px; } .search button,.primary { background:#428ff3; color:white; padding:12px 20px; border-radius:10px; } .content { padding:0 16px 30px; } .hint, p, small { color:#77879c; } article { background:white; border-radius:14px; padding:17px; margin-bottom:10px; box-shadow:0 3px 14px #203f6810; } article p { margin:10px 0; } article b { color:#287bdc; } .status { float:right; color:#418ae5; } .pagination { display:flex; justify-content:space-between; align-items:center; padding:12px 0; } .pagination button,.back { background:white; color:#438ce7; border-radius:8px; padding:10px; } .primary { width:100%; margin-top:12px; }
+.dashboard { padding: 20px 16px; } .welcome { background: #245eea; color: white; padding: 26px 22px; border-radius: 18px; } .welcome p { color: #dbe8ff; margin: 0; } .welcome h2 { margin: 16px 0 8px; font-size: 24px; } .welcome span { color: #dbe8ff; } .dashboard > h2 { font-size: 18px; margin: 28px 0 14px; } .work-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; } .work-grid button { display: grid; text-align: left; gap: 8px; background: white; padding: 18px; border-radius: 14px; color: #17263c; } .work-grid button span { color: #245eea; font-size: 26px; } .work-grid button strong { font-size: 17px; } .home-link { margin: 10px 16px 0; background: transparent; color: #245eea; padding: 8px 0; }
+.overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 20px; } .overview div { display: grid; gap: 8px; text-align: center; } .overview strong { font-size: 24px; }
 </style>
