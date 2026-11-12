@@ -1,4 +1,4 @@
-<!-- WMS 商品分类表单 -->
+<!-- WMS 物品分类表单 -->
 <template>
   <Dialog v-model="dialogVisible" :title="dialogTitle">
     <el-form
@@ -61,7 +61,7 @@ import { FormRules } from 'element-plus'
 import { ItemCategoryApi, ItemCategoryVO } from '@/api/wms/md/item/category'
 import { generateWmsCode } from '@/views/wms/utils/constants'
 
-/** WMS 商品分类表单 */
+/** WMS 物品分类表单 */
 defineOptions({ name: 'WmsItemCategoryForm' })
 
 const { t } = useI18n() // 国际化

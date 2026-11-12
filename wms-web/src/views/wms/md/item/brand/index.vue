@@ -1,4 +1,4 @@
-<!-- WMS 商品品牌管理 -->
+<!-- WMS 物品品牌管理 -->
 <template>
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -111,7 +111,7 @@ import { ItemBrandApi, ItemBrandVO } from '@/api/wms/md/item/brand'
 import ItemBrandForm from './ItemBrandForm.vue'
 import download from '@/utils/download'
 
-/** WMS 商品品牌管理 */
+/** WMS 物品品牌管理 */
 defineOptions({ name: 'WmsItemBrand' })
 
 const message = useMessage() // 消息弹窗
@@ -129,7 +129,7 @@ const queryParams = reactive({
 const queryFormRef = ref() // 搜索的表单
 const exportLoading = ref(false) // 导出的加载中
 
-/** 查询商品品牌列表 */
+/** 查询物品品牌列表 */
 const getList = async () => {
   loading.value = true
   try {
@@ -180,7 +180,7 @@ const handleExport = async () => {
     // 发起导出
     exportLoading.value = true
     const data = await ItemBrandApi.exportItemBrand(queryParams)
-    download.excel(data, '商品品牌.xls')
+    download.excel(data, '物品品牌.xls')
   } catch {
   } finally {
     exportLoading.value = false

@@ -1,4 +1,4 @@
-<!-- WMS 商品分类管理 -->
+<!-- WMS 物品分类管理 -->
 <template>
   <!-- 搜索工作栏 -->
   <ContentWrap>
@@ -136,7 +136,7 @@ import { handleTree } from '@/utils/tree'
 import { ItemCategoryApi, ItemCategoryVO } from '@/api/wms/md/item/category'
 import ItemCategoryForm from './ItemCategoryForm.vue'
 
-/** WMS 商品分类管理 */
+/** WMS 物品分类管理 */
 defineOptions({ name: 'WmsItemCategory' })
 
 const message = useMessage() // 消息弹窗
@@ -155,7 +155,7 @@ const queryFormRef = ref() // 搜索的表单
 const isExpandAll = ref(true) // 是否展开，默认全部展开
 const refreshTable = ref(true) // 重新渲染表格状态
 
-/** 查询商品分类列表 */
+/** 查询物品分类列表 */
 const getList = async () => {
   loading.value = true
   try {

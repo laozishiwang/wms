@@ -1,4 +1,4 @@
-<!-- WMS 商品品牌选择器 -->
+<!-- WMS 物品品牌选择器 -->
 <template>
   <el-select
     v-bind="$attrs"
@@ -23,7 +23,7 @@
 <script lang="ts" setup>
 import { ItemBrandApi, ItemBrandVO } from '@/api/wms/md/item/brand'
 
-/** WMS 商品品牌选择器 */
+/** WMS 物品品牌选择器 */
 defineOptions({ name: 'WmsItemBrandSelect', inheritAttrs: false })
 
 const props = withDefaults(
@@ -36,7 +36,7 @@ const props = withDefaults(
   {
     disabled: false,
     clearable: true,
-    placeholder: '请选择商品品牌'
+    placeholder: '请选择物品品牌'
   }
 )
 

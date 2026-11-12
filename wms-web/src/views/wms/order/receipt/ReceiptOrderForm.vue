@@ -118,6 +118,17 @@
             <el-input v-model="scope.row.batchNo" maxlength="64" placeholder="留空为无批次库存" />
           </template>
         </el-table-column>
+        <el-table-column label="托盘号" width="150"><template #default="scope"><el-input v-model="scope.row.palletNo" maxlength="64" /></template></el-table-column>
+        <el-table-column label="箱号" width="150"><template #default="scope"><el-input v-model="scope.row.boxNo" maxlength="64" /></template></el-table-column>
+        <el-table-column label="卷号" width="150"><template #default="scope"><el-input v-model="scope.row.rollNo" maxlength="64" /></template></el-table-column>
+        <el-table-column label="净长(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.netLength" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
+        <el-table-column label="毛长(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.grossLength" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
+        <el-table-column label="净重(kg)" width="150"><template #default="scope"><el-input-number v-model="scope.row.netWeight" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
+        <el-table-column label="毛重(kg)" width="150"><template #default="scope"><el-input-number v-model="scope.row.grossWeight" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
+        <el-table-column label="长(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.length" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
+        <el-table-column label="宽(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.width" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
+        <el-table-column label="高(cm)" width="150"><template #default="scope"><el-input-number v-model="scope.row.height" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
+        <el-table-column label="销售价(元)" width="150"><template #default="scope"><el-input-number v-model="scope.row.salesPrice" :controls="false" :min="0" class="!w-1/1" /></template></el-table-column>
         <el-table-column label="生产日期" width="165">
           <template #default="scope">
             <el-date-picker v-model="scope.row.productionDate" type="date" value-format="YYYY-MM-DD HH:mm:ss" placeholder="生产日期" class="!w-1/1" />
@@ -141,7 +152,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="单价(元)" prop="price" width="160">
+        <el-table-column label="成本价(元)" prop="price" width="160">
           <template #default="scope">
             <el-input-number
               v-model="scope.row.price"
@@ -346,7 +357,7 @@ const importDetails = async (event: Event) => {
     const data = new FormData()
     data.append('file', file)
     const response: any = await request.upload({ url: '/wms/receipt-order/import-parse', data })
-    const rows: Array<{ skuCode?: string; quantity?: number; price?: number; locationCode?: string; batchNo?: string; productionDate?: string; expirationDate?: string }> = response.data
+    const rows: Array<ReceiptOrderDetailVO & { skuCode?: string; quantity?: number; price?: number; locationCode?: string; batchNo?: string; productionDate?: string; expirationDate?: string }> = response.data
     if (!rows?.length) { message.error('模板没有明细'); return }
     const places: Array<{ id: number; type: string; code: string }> = await request.get({ url: '/wms/storage-place/list', params: { warehouseId: formData.value.warehouseId } })
     const parseDate = (value?: string) => {
@@ -369,9 +380,9 @@ const importDetails = async (event: Event) => {
     for (const [index, row] of rows.entries()) {
       const code = String(row.skuCode || '').trim()
       const quantity = Number(row.quantity)
-      const price = Number(row.price)
-      if (!code || !Number.isFinite(quantity) || quantity <= 0 || row.price == null || !Number.isFinite(price) || price < 0) {
-        message.error(`第 ${index + 1} 条明细规格编号、数量或单价不正确`); return
+      const price = row.price == null ? undefined : Number(row.price)
+      if (!code || !Number.isFinite(quantity) || quantity <= 0 || (price !== undefined && (!Number.isFinite(price) || price < 0))) {
+        message.error(`第 ${index + 1} 条明细规格编号、数量或成本价不正确`); return
       }
       const skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
       const matched = skus.filter((sku) => sku.code === code)
@@ -383,7 +394,7 @@ const importDetails = async (event: Event) => {
       let productionDate: string | undefined, expirationDate: string | undefined
       try { productionDate = parseDate(row.productionDate); expirationDate = parseDate(row.expirationDate) } catch { message.error(`第 ${index + 1} 条明细日期格式不正确`); return }
       if ((!batchNo && (productionDate || expirationDate)) || (productionDate && expirationDate && productionDate > expirationDate)) { message.error(`第 ${index + 1} 条明细批次或日期不正确`); return }
-      details.push({ ...buildDetail(matched[0]), quantity, price, locationId: locations[0]?.id, batchNo, productionDate, expirationDate, totalPrice: multiplyPrice(quantity, price) })
+      details.push({ ...buildDetail(matched[0]), palletNo: row.palletNo, boxNo: row.boxNo, rollNo: row.rollNo, netLength: row.netLength, grossLength: row.grossLength, netWeight: row.netWeight, grossWeight: row.grossWeight, length: row.length, width: row.width, height: row.height, salesPrice: row.salesPrice, quantity, price, locationId: locations[0]?.id, batchNo, productionDate, expirationDate, totalPrice: multiplyPrice(quantity, price) })
     }
     formData.value.details = [...(formData.value.details || []), ...details]
     message.success(`已导入 ${details.length} 行，请核对后保存`)
@@ -420,7 +431,7 @@ const getSelectedSkuIds = () => {
 
 /** 删除明细 */
 const copyDetail = (detail: ReceiptOrderDetailVO) => {
-  formData.value.details?.push({ ...detail, id: undefined, orderId: undefined, batchNo: undefined, productionDate: undefined, expirationDate: undefined, serialNos: [] })
+  formData.value.details?.push({ ...detail, id: undefined, orderId: undefined, batchNo: undefined, palletNo: undefined, boxNo: undefined, rollNo: undefined, productionDate: undefined, expirationDate: undefined, serialNos: [] })
 }
 
 const handleDeleteDetail = (index: number) => {

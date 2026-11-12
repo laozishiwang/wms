@@ -13,6 +13,17 @@ export interface ReceiptOrderDetailVO {
   warehouseName?: string
   locationId?: number
   serialNos?: string[]
+  palletNo?: string
+  boxNo?: string
+  rollNo?: string
+  netLength?: number
+  grossLength?: number
+  netWeight?: number
+  grossWeight?: number
+  length?: number
+  width?: number
+  height?: number
+  salesPrice?: number
   batchNo?: string
   productionDate?: string
   expirationDate?: string

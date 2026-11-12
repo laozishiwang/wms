@@ -65,4 +65,15 @@ public class WmsReceiptOrderDetailRespVO {
     /** 到期日期。 */
     private LocalDateTime expirationDate;
 
+    private String palletNo;
+    private String boxNo;
+    private String rollNo;
+    private BigDecimal netLength;
+    private BigDecimal grossLength;
+    private BigDecimal netWeight;
+    private BigDecimal grossWeight;
+    private BigDecimal length;
+    private BigDecimal width;
+    private BigDecimal height;
+    private BigDecimal salesPrice;
 }

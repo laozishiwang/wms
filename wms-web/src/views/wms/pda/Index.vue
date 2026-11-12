@@ -24,7 +24,7 @@ const logout = async () => {
   try { await loginOut() } finally {
     removeToken()
     deleteUserCache()
-    window.location.href = location.port === '889' ? '/pda-login' : '/login'
+    window.location.href = '/pda-login'
   }
 }
 

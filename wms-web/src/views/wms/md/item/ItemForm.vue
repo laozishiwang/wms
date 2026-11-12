@@ -1,4 +1,4 @@
-<!-- WMS 商品表单 -->
+<!-- WMS 物品表单 -->
 <template>
   <Dialog v-model="dialogVisible" :title="dialogTitle" width="1200px">
     <el-form
@@ -11,18 +11,18 @@
       <!-- 基础信息 -->
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="商品名称" prop="name">
-            <el-input v-model="formData.name" maxlength="60" placeholder="请输入商品名称" />
+          <el-form-item label="物品名称" prop="name">
+            <el-input v-model="formData.name" maxlength="60" placeholder="请输入物品名称" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="商品分类" prop="categoryId">
+          <el-form-item label="物品分类" prop="categoryId">
             <ItemCategorySelect v-model="formData.categoryId" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="商品编号" prop="code">
-            <el-input v-model="formData.code" maxlength="20" placeholder="请输入商品编号">
+          <el-form-item label="物品编号" prop="code">
+            <el-input v-model="formData.code" maxlength="20" placeholder="请输入物品编号">
               <template #append>
                 <el-button @click="formData.code = generateWmsCode('I')">生成</el-button>
               </template>
@@ -30,12 +30,12 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="商品单位" prop="unit">
+          <el-form-item label="物品单位" prop="unit">
             <el-input v-model="formData.unit" maxlength="20" placeholder="请输入单位" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="商品品牌" prop="brandId">
+          <el-form-item label="物品品牌" prop="brandId">
             <ItemBrandSelect v-model="formData.brandId" />
           </el-form-item>
         </el-col>
@@ -167,7 +167,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column align="center" label="操作" width="80">
+        <el-table-column align="center" fixed="right" label="操作" width="80">
           <template #default="scope">
             <el-button link type="danger" @click="handleDeleteSku(scope.$index)">删除</el-button>
           </template>
@@ -190,7 +190,7 @@ import { generateWmsCode } from '@/views/wms/utils/constants'
 import ItemBrandSelect from './brand/components/ItemBrandSelect.vue'
 import ItemCategorySelect from './category/components/ItemCategorySelect.vue'
 
-/** WMS 商品表单 */
+/** WMS 物品表单 */
 defineOptions({ name: 'WmsItemForm' })
 
 const { t } = useI18n() // 国际化
@@ -211,10 +211,10 @@ const formData = ref<ItemVO>({
   skus: []
 })
 const formRules = reactive<FormRules>({
-  code: [{ required: true, message: '商品编号不能为空', trigger: 'blur' }],
-  name: [{ required: true, message: '商品名称不能为空', trigger: 'blur' }],
-  categoryId: [{ required: true, message: '商品分类不能为空', trigger: 'change' }],
-  skus: [{ required: true, message: '至少包含一个商品规格', trigger: 'change' }]
+  code: [{ required: true, message: '物品编号不能为空', trigger: 'blur' }],
+  name: [{ required: true, message: '物品名称不能为空', trigger: 'blur' }],
+  categoryId: [{ required: true, message: '物品分类不能为空', trigger: 'change' }],
+  skus: [{ required: true, message: '至少包含一个物品规格', trigger: 'change' }]
 })
 const skuNameRules = [{ required: true, message: '规格名称不能为空', trigger: 'blur' }]
 const formRef = ref() // 表单 Ref
@@ -268,7 +268,7 @@ const handleAddSku = () => {
 /** 删除规格 */
 const handleDeleteSku = (index: number) => {
   if (!formData.value.skus || formData.value.skus.length <= 1) {
-    message.error('至少包含一个商品规格')
+    message.error('至少包含一个物品规格')
     return
   }
   formData.value.skus.splice(index, 1)

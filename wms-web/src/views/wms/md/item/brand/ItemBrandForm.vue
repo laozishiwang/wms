@@ -1,4 +1,4 @@
-<!-- WMS 商品品牌表单 -->
+<!-- WMS 物品品牌表单 -->
 <template>
   <Dialog v-model="dialogVisible" :title="dialogTitle">
     <el-form
@@ -30,7 +30,7 @@
 import { ItemBrandApi, ItemBrandVO } from '@/api/wms/md/item/brand'
 import { generateWmsCode } from '@/views/wms/utils/constants'
 
-/** WMS 商品品牌表单 */
+/** WMS 物品品牌表单 */
 defineOptions({ name: 'WmsItemBrandForm' })
 
 const { t } = useI18n() // 国际化

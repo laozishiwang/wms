@@ -77,7 +77,7 @@
       />
       <el-table-column align="center" label="操作" width="280" :show-overflow-tooltip="false">
         <template #default="scope">
-          <el-button v-hasPermi="['wms:warehouse:query']" link type="primary" @click="storageRef?.open(scope.row)">货架/库位</el-button>
+          <el-button v-hasPermi="['wms:warehouse:query']" link type="primary" @click="storageRef?.open(scope.row)">库区/库位</el-button>
           <el-button
             v-hasPermi="['wms:warehouse:update']"
             link

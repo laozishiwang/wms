@@ -30,6 +30,11 @@ const whiteList = [
   '/pms/kb/document/share'
 ]
 
+const loginPathFor = (path: string) =>
+  location.port === '889' || /^\/pda(?:[/?#]|$)/.test(path)
+    ? '/pda-login'
+    : '/login'
+
 // 路由加载前
 router.beforeEach(async (to, from, next) => {
   start()
@@ -64,7 +69,7 @@ router.beforeEach(async (to, from, next) => {
           // 详见 issue：https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/IBJ6SP
           removeToken()
           deleteUserCache()
-          next(`${location.port === '889' ? '/pda-login' : '/login'}?redirect=${encodeURIComponent(redirect)}`)
+          next(`${loginPathFor(redirect)}?redirect=${encodeURIComponent(redirect)}`)
           return
         } finally {
           isRelogin.show = false
@@ -88,7 +93,7 @@ router.beforeEach(async (to, from, next) => {
     if (whiteList.some((path) => to.path === path || to.path.startsWith(`${path}/`))) {
       next()
     } else {
-      next(`${location.port === '889' ? '/pda-login' : '/login'}?redirect=${encodeURIComponent(to.fullPath)}`)
+      next(`${loginPathFor(to.path)}?redirect=${encodeURIComponent(to.fullPath)}`)
     }
   }
 })

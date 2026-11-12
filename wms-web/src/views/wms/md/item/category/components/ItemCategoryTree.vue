@@ -1,4 +1,4 @@
-<!-- WMS 商品分类树组件 -->
+<!-- WMS 物品分类树组件 -->
 <template>
   <div class="h-full">
     <el-input v-model="filterText" class="p-[15px]" clearable :placeholder="filterPlaceholder">
@@ -27,7 +27,7 @@ import { ElTree } from 'element-plus'
 import { defaultProps, handleTree } from '@/utils/tree'
 import { ItemCategoryApi, ItemCategoryVO } from '@/api/wms/md/item/category'
 
-/** WMS 商品分类树组件 */
+/** WMS 物品分类树组件 */
 defineOptions({ name: 'WmsItemCategoryTree' })
 
 withDefaults(

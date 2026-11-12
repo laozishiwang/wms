@@ -1,4 +1,4 @@
-<!-- WMS 商品分类选择器 -->
+<!-- WMS 物品分类选择器 -->
 <template>
   <el-tree-select
     v-bind="$attrs"
@@ -18,7 +18,7 @@
 import { defaultProps, handleTree } from '@/utils/tree'
 import { ItemCategoryApi, ItemCategoryVO } from '@/api/wms/md/item/category'
 
-/** WMS 商品分类选择器 */
+/** WMS 物品分类选择器 */
 defineOptions({ name: 'WmsItemCategorySelect', inheritAttrs: false })
 
 const props = withDefaults(
@@ -29,7 +29,7 @@ const props = withDefaults(
   }>(),
   {
     disabled: false,
-    placeholder: '请选择商品分类'
+    placeholder: '请选择物品分类'
   }
 )
 

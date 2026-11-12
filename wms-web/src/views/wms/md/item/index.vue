@@ -1,6 +1,6 @@
-<!-- WMS 商品管理 -->
+<!-- WMS 物品管理 -->
 <template>
-  <doc-alert title="【基础】商品、SKU、分类、品牌" url="https://doc.iocoder.cn/wms/md/item/" />
+  <doc-alert title="【基础】物品、SKU、分类、品牌" url="https://doc.iocoder.cn/wms/md/item/" />
 
   <el-row :gutter="20">
     <el-col :span="4" :xs="24">
@@ -18,25 +18,25 @@
           class="-mb-15px"
           label-width="68px"
         >
-          <el-form-item label="商品编号" prop="code">
+          <el-form-item label="物品编号" prop="code">
             <el-input
               v-model="queryParams.code"
               class="!w-240px"
               clearable
-              placeholder="请输入商品编号"
+              placeholder="请输入物品编号"
               @keyup.enter="handleQuery"
             />
           </el-form-item>
-          <el-form-item label="商品名称" prop="name">
+          <el-form-item label="物品名称" prop="name">
             <el-input
               v-model="queryParams.name"
               class="!w-240px"
               clearable
-              placeholder="请输入商品名称"
+              placeholder="请输入物品名称"
               @keyup.enter="handleQuery"
             />
           </el-form-item>
-          <el-form-item label="商品品牌" prop="brandId">
+          <el-form-item label="物品品牌" prop="brandId">
             <ItemBrandSelect v-model="queryParams.brandId" class="!w-240px" />
           </el-form-item>
           <el-form-item>
@@ -71,7 +71,7 @@
         </el-form>
       </ContentWrap>
 
-      <!-- 商品列表 -->
+      <!-- 物品列表 -->
       <ContentWrap>
         <el-table
           v-loading="loading"
@@ -79,7 +79,7 @@
           :show-overflow-tooltip="true"
           :span-method="spanMethod"
         >
-          <el-table-column label="商品信息" min-width="220">
+          <el-table-column label="物品信息" min-width="220">
             <template #default="scope">
               <div class="text-14px">{{ scope.row.itemName }}</div>
               <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
@@ -181,7 +181,7 @@ import ItemBrandSelect from './brand/components/ItemBrandSelect.vue'
 import { isNullOrUnDef } from '@/utils/is'
 import { formatDimensionText, formatPrice, formatWeight } from '@/views/wms/utils/format'
 
-/** WMS 商品管理 */
+/** WMS 物品管理 */
 defineOptions({ name: 'WmsItem' })
 
 const message = useMessage() // 消息弹窗
@@ -209,7 +209,7 @@ const queryFormRef = ref() // 搜索的表单
 const categoryTreeRef = ref() // 分类树
 const exportLoading = ref(false) // 导出的加载中
 
-/** 查询商品列表 */
+/** 查询物品列表 */
 const getList = async () => {
   loading.value = true
   try {
@@ -221,7 +221,7 @@ const getList = async () => {
   }
 }
 
-/** 展开商品 SKU 列表 */
+/** 展开物品 SKU 列表 */
 const buildItemSkuRows = (items: ItemVO[]) => {
   return items.flatMap((item) => {
     const skus = item.skus?.length ? item.skus : [{}]
@@ -265,11 +265,11 @@ const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 
-/** 删除商品 */
+/** 删除物品 */
 const handleDelete = async (id: number, name?: string) => {
   try {
     // 删除的二次确认
-    await message.confirm('确认删除商品【' + name + '】吗？')
+    await message.confirm('确认删除物品【' + name + '】吗？')
     // 发起删除
     await ItemApi.deleteItem(id)
     message.success(t('common.delSuccess'))
@@ -286,14 +286,14 @@ const handleExport = async () => {
     // 发起导出
     exportLoading.value = true
     const data = await ItemApi.exportItem(queryParams)
-    download.excel(data, '商品.xls')
+    download.excel(data, '物品.xls')
   } catch {
   } finally {
     exportLoading.value = false
   }
 }
 
-/** 合并商品维度的重复单元格 */
+/** 合并物品维度的重复单元格 */
 const spanMethod = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
   if (![0, 5].includes(columnIndex)) {
     return { rowspan: 1, colspan: 1 }

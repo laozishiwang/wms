@@ -31,7 +31,7 @@ const login = async () => {
 <template>
   <main class="pda-login">
     <div class="card">
-      <p class="eyebrow">WAREHOUSE</p>
+      <div class="mark" aria-hidden="true">仓</div>
       <h1>移动仓库</h1>
       <p class="hint">登录后开始扫码作业</p>
       <form @submit.prevent="login">
@@ -45,5 +45,5 @@ const login = async () => {
 </template>
 
 <style scoped>
-.pda-login{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f1f5fa;color:#17263a}.card{width:100%;max-width:420px;padding:32px 24px;background:white;border-radius:18px;box-shadow:0 12px 40px #18385a16}.eyebrow{font-size:12px;letter-spacing:.2em;color:#438cea;font-weight:700}h1{font-size:28px;margin:8px 0}.hint{color:#718096;margin:0 0 28px}form{display:grid;gap:18px}label{display:grid;gap:8px;font-size:14px;font-weight:600}input{width:100%;min-height:48px;border:1px solid #d9e2ef;border-radius:9px;padding:0 12px;font-size:16px}button{min-height:48px;border:0;border-radius:9px;color:white;background:#378df0;font-size:16px;font-weight:600}button:disabled{opacity:.6}
+.pda-login{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f3f6fb;color:#15233c}.card{width:100%;max-width:420px;padding:32px 24px;background:white;border-radius:20px;box-shadow:0 12px 40px #18385a16}.mark{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:#eaf2ff;color:#2165dc;font-size:22px;font-weight:700}h1{font-size:28px;margin:20px 0 8px}.hint{color:#718096;margin:0 0 28px}form{display:grid;gap:18px}label{display:grid;gap:8px;font-size:14px;font-weight:600}input{width:100%;min-height:48px;border:1px solid #d9e2ef;border-radius:9px;padding:0 12px;font-size:16px}input:focus-visible{outline:2px solid #2165dc;outline-offset:2px}button{min-height:48px;border:0;border-radius:9px;color:white;background:#2165dc;font-size:16px;font-weight:600}button:disabled{opacity:.6}
 </style>

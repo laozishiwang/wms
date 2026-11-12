@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import cn.iocoder.yudao.module.wms.dal.dataobject.md.item.WmsItemSkuDO;
 import cn.iocoder.yudao.module.wms.dal.dataobject.md.warehouse.WmsWarehouseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -84,4 +85,15 @@ public class WmsReceiptOrderDetailDO extends BaseDO {
     /** 到期日期。 */
     private LocalDateTime expirationDate;
 
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private String palletNo;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private String boxNo;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private String rollNo;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal netLength;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal grossLength;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal netWeight;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal grossWeight;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal length;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal width;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal height;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal salesPrice;
 }
