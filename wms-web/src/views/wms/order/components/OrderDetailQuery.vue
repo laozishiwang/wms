@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import request from '@/config/axios'
-import { ElDialog } from 'element-plus'
+import { ElDialog, ElMessage } from 'element-plus'
 import { formatDate } from '@/utils/formatTime'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 const props = defineProps<{ direction: 'receipt' | 'shipment'; inline?: boolean }>()
@@ -59,7 +59,17 @@ const load = async () => {
     }
   } finally { if (requestId === listRequestId) loading.value = false }
 }
-const search = () => { query.pageNo = 1; load() }
+const search = () => {
+  for (const group of rangeGroups) for (const field of group.fields) {
+    const min = query[field.key + 'Min'], max = query[field.key + 'Max']
+    if (min != null && max != null && min > max) { ElMessage.warning(`${field.label}的最小值不能大于最大值`); return }
+  }
+  for (const field of [{ key: 'productionDate', label: '生产日期' }, { key: 'expirationDate', label: '到期日期' }]) {
+    const from = query[field.key + 'From'], to = query[field.key + 'To']
+    if (from && to && from > to) { ElMessage.warning(`${field.label}的开始日期不能晚于结束日期`); return }
+  }
+  query.pageNo = 1; load()
+}
 const reset = () => { Object.keys(query).forEach((key) => delete query[key]); Object.assign(query, { pageNo: 1, pageSize: 10 }); dates.value = []; load() }
 const open = () => { visible.value = true; search() }
 onMounted(() => { if (props.inline) search() })

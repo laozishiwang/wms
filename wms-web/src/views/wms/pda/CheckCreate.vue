@@ -45,6 +45,7 @@ const save = async () => {
   details.value.push(detail); sku.value = undefined; selected.value = undefined; serialReady.value = false; code.value = ''
 }
 const submit = async () => {
+  if (sku.value) { ElMessage.warning('当前物品尚未添加到明细，请先添加或取消当前物品'); return }
   if (!details.value.length) { ElMessage.warning('请先添加盘点明细'); return }
   loading.value = true
   try {
@@ -57,6 +58,6 @@ const submit = async () => {
   <section class="check-create"><button class="back" @click="emit('close')">‹ 返回</button><h2>新建盘点草稿</h2><p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form>
     <template v-if="sku && balances.length"><p>{{ sku.itemName }} {{ sku.name }}</p><p>选择账面库存（库位／批次／到货）</p><el-select v-model="selected" placeholder="请选择" @change="choose"><el-option v-for="(b, index) in balances" :key="index" :value="index" :label="`库位 ${b.locationId ?? '未分配'} · 批次 ${b.batchNo || '未分配'} · 到货 ${b.arrivalId ?? '历史未分配'} · ${b.quantity}`" /></el-select>
     <template v-if="selected !== undefined"><p>账面数量：{{ balances[selected].quantity }}</p><p>实盘数量</p><el-input-number v-model="actual" :min="0" :precision="2" /><p>实盘序列号</p><SerialEditor v-model="actualSerials" /></template></template>
-    <p><el-button @click="save">添加明细</el-button></p><article v-for="(item, index) in details" :key="index">{{ item.label }} · 账面 {{ item.quantity }} · 实盘 {{ item.checkQuantity }} <el-button link @click="details.splice(index, 1)">删除</el-button></article><p><el-button type="primary" :loading="loading" @click="submit">保存草稿</el-button></p></section>
+    <p><el-button @click="save">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; serialRequestId++; serialReady = false">取消当前物品</el-button></p><article v-for="(item, index) in details" :key="index">{{ item.label }} · 账面 {{ item.quantity }} · 实盘 {{ item.checkQuantity }} <el-button link @click="details.splice(index, 1)">删除</el-button></article><p><el-button type="primary" :loading="loading" @click="submit">保存草稿</el-button></p></section>
 </template>
 <style scoped>.check-create { padding: 16px; }.check-create :deep(.el-select) { width: 100%; }.check-create form { display: flex; gap: 8px; }</style>
