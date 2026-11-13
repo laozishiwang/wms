@@ -1,0 +1,17 @@
+-- 仅追加 WMS 业务报表菜单及与原查询权限对应的授权；重复执行不重复授权。
+SET @wms_root = (SELECT parent_id FROM system_menu WHERE component='wms/order/receipt/index' AND deleted=0 LIMIT 1);
+INSERT INTO system_menu(name,permission,type,sort,parent_id,path,icon,component,component_name,status,visible,keep_alive,always_show)
+SELECT '业务报表','',1,80,@wms_root,'reports','ep:data-analysis','','WmsReports',0,b'1',b'1',b'1' WHERE @wms_root IS NOT NULL AND NOT EXISTS (SELECT 1 FROM system_menu WHERE parent_id=@wms_root AND path='reports' AND deleted=0);
+SET @report_root = (SELECT id FROM system_menu WHERE parent_id=@wms_root AND path='reports' AND deleted=0 LIMIT 1);
+INSERT INTO system_menu(name,permission,type,sort,parent_id,path,icon,component,component_name,status,visible,keep_alive,always_show)
+SELECT '入库明细查询','',2,1,@report_root,'receipt','ep:download','wms/report/receipt/index','WmsReceiptReport',0,b'1',b'1',b'1' WHERE @report_root IS NOT NULL AND NOT EXISTS (SELECT 1 FROM system_menu WHERE component='wms/report/receipt/index' AND deleted=0);
+INSERT INTO system_menu(name,permission,type,sort,parent_id,path,icon,component,component_name,status,visible,keep_alive,always_show)
+SELECT '出库明细查询','',2,2,@report_root,'shipment','ep:upload','wms/report/shipment/index','WmsShipmentReport',0,b'1',b'1',b'1' WHERE @report_root IS NOT NULL AND NOT EXISTS (SELECT 1 FROM system_menu WHERE component='wms/report/shipment/index' AND deleted=0);
+SET @receipt_report=(SELECT id FROM system_menu WHERE component='wms/report/receipt/index' AND deleted=0 LIMIT 1);
+SET @shipment_report=(SELECT id FROM system_menu WHERE component='wms/report/shipment/index' AND deleted=0 LIMIT 1);
+INSERT INTO system_role_menu(role_id,menu_id,tenant_id)
+SELECT DISTINCT rm.role_id, target.menu_id, rm.tenant_id FROM system_role_menu rm JOIN system_menu source ON source.id=rm.menu_id AND source.deleted=0 JOIN (SELECT @report_root menu_id UNION SELECT @receipt_report UNION SELECT @shipment_report) target ON target.menu_id IS NOT NULL
+WHERE rm.deleted=0 AND ((source.permission='wms:receipt-order:query' AND target.menu_id IN (@report_root,@receipt_report)) OR (source.permission='wms:shipment-order:query' AND target.menu_id IN (@report_root,@shipment_report))) AND NOT EXISTS (SELECT 1 FROM system_role_menu x WHERE x.role_id=rm.role_id AND x.tenant_id=rm.tenant_id AND x.menu_id=target.menu_id AND x.deleted=0);
+UPDATE system_tenant_package p SET p.menu_ids=JSON_ARRAY_APPEND(p.menu_ids,'$',@report_root) WHERE p.deleted=0 AND @report_root IS NOT NULL AND JSON_VALID(p.menu_ids) AND NOT JSON_CONTAINS(p.menu_ids,CAST(@report_root AS JSON)) AND EXISTS (SELECT 1 FROM system_menu s WHERE s.deleted=0 AND s.permission IN ('wms:receipt-order:query','wms:shipment-order:query') AND JSON_CONTAINS(p.menu_ids,CAST(s.id AS JSON)));
+UPDATE system_tenant_package p SET p.menu_ids=JSON_ARRAY_APPEND(p.menu_ids,'$',@receipt_report) WHERE p.deleted=0 AND @receipt_report IS NOT NULL AND JSON_VALID(p.menu_ids) AND NOT JSON_CONTAINS(p.menu_ids,CAST(@receipt_report AS JSON)) AND EXISTS (SELECT 1 FROM system_menu s WHERE s.deleted=0 AND s.permission='wms:receipt-order:query' AND JSON_CONTAINS(p.menu_ids,CAST(s.id AS JSON)));
+UPDATE system_tenant_package p SET p.menu_ids=JSON_ARRAY_APPEND(p.menu_ids,'$',@shipment_report) WHERE p.deleted=0 AND @shipment_report IS NOT NULL AND JSON_VALID(p.menu_ids) AND NOT JSON_CONTAINS(p.menu_ids,CAST(@shipment_report AS JSON)) AND EXISTS (SELECT 1 FROM system_menu s WHERE s.deleted=0 AND s.permission='wms:shipment-order:query' AND JSON_CONTAINS(p.menu_ids,CAST(s.id AS JSON)));

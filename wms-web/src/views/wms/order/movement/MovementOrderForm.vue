@@ -416,10 +416,6 @@ function getDetailSummaries({ columns, data }: { columns: any[]; data: MovementO
 
 /** 校验明细 */
 const validateDetails = (required: boolean) => {
-  if (formData.value.sourceWarehouseId === formData.value.targetWarehouseId) {
-    message.error('来源仓库和目标仓库不能相同')
-    return false
-  }
   if (!formData.value.details?.length) {
     if (required) {
       message.error('至少包含一条移库明细')
@@ -429,6 +425,10 @@ const validateDetails = (required: boolean) => {
   }
   for (let i = 0; i < formData.value.details.length; i++) {
     const detail = formData.value.details[i]
+    if (formData.value.sourceWarehouseId === formData.value.targetWarehouseId && detail.sourceLocationId === detail.targetLocationId) {
+      message.error(`第 ${i + 1} 行来源库位和目标库位不能相同`)
+      return false
+    }
     if ((detail as typeof detail & { arrivalId?: number }).arrivalId === undefined) {
       message.error(`第 ${i + 1} 行请选择到货记录或历史未分配`)
       return false

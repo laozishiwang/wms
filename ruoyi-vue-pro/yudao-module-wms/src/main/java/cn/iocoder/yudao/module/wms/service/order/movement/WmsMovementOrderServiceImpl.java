@@ -155,7 +155,9 @@ public class WmsMovementOrderServiceImpl implements WmsMovementOrderService {
         warehouseService.validateWarehouseExists(reqVO.getSourceWarehouseId());
         warehouseService.validateWarehouseExists(reqVO.getTargetWarehouseId());
         // 校验来源和目标不能相同
-        if (ObjectUtil.equal(reqVO.getSourceWarehouseId(), reqVO.getTargetWarehouseId())) {
+        if (ObjectUtil.equal(reqVO.getSourceWarehouseId(), reqVO.getTargetWarehouseId())
+                && CollUtil.isNotEmpty(reqVO.getDetails())
+                && reqVO.getDetails().stream().anyMatch(detail -> ObjectUtil.equal(detail.getSourceLocationId(), detail.getTargetLocationId()))) {
             throw exception(MOVEMENT_ORDER_WAREHOUSE_SAME);
         }
     }
