@@ -40,6 +40,7 @@
     "@wangeditor-next/editor-for-vue": "^5.1.14",
     "@wangeditor-next/plugin-mention": "^2.0.0",
     "@zxcvbn-ts/core": "^3.0.4",
+    "@zxing/browser": "0.1.5",
     "animate.css": "^4.1.1",
     "axios": "1.16.0",
     "benz-amr-recorder": "^1.1.5",

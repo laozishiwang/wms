@@ -5,9 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  monaco-editor@0.52.2:
-    hash: 65fead60181f6086c178630ed17082327a747076b436188347657699058924f9
-    path: patches/monaco-editor@0.52.2.patch
+  monaco-editor@0.52.2: 65fead60181f6086c178630ed17082327a747076b436188347657699058924f9
 
 importers:
 
@@ -46,6 +44,9 @@ importers:
       '@zxcvbn-ts/core':
         specifier: ^3.0.4
         version: 3.0.4
+      '@zxing/browser':
+        specifier: 0.1.5
+        version: 0.1.5(@zxing/library@0.21.3)
       animate.css:
         specifier: ^4.1.1
         version: 4.1.1
@@ -2176,6 +2177,18 @@ packages:
 
   '@zxcvbn-ts/core@3.0.4':
     resolution: {integrity: sha512-aQeiT0F09FuJaAqNrxynlAwZ2mW/1MdXakKWNmGM1Qp/VaY6CnB/GfnMS2T8gB2231Esp1/maCWd8vTG4OuShw==}
+
+  '@zxing/browser@0.1.5':
+    resolution: {integrity: sha512-4Lmrn/il4+UNb87Gk8h1iWnhj39TASEHpd91CwwSJtY5u+wa0iH9qS0wNLAWbNVYXR66WmT5uiMhZ7oVTrKfxw==}
+    peerDependencies:
+      '@zxing/library': ^0.21.0
+
+  '@zxing/library@0.21.3':
+    resolution: {integrity: sha512-hZHqFe2JyH/ZxviJZosZjV+2s6EDSY0O24R+FQmlWZBZXP9IqMo7S3nb3+2LBWxodJQkSurdQGnqE7KXqrYgow==}
+    engines: {node: '>= 10.4.0'}
+
+  '@zxing/text-encoding@0.9.0':
+    resolution: {integrity: sha512-U/4aVJ2mxI0aDNI8Uq0wEhMgY+u4CNtEb0om3+y3+niDAsoTCOB33UF0sxpzqzdqXLqmvc+vZyAt4O8pPdfkwA==}
 
   abbrev@2.0.0:
     resolution: {integrity: sha512-6/mh1E2u2YgEsCHdY0Yx5oW+61gZU+1vXaoiHHrpKeuRNNgFvS+/jrwHiQhB5apAf5oB7UB7E19ol2R2LKH8hQ==}
@@ -4770,6 +4783,10 @@ packages:
     peerDependencies:
       typescript: '>=4.8.4'
 
+  ts-custom-error@3.3.1:
+    resolution: {integrity: sha512-5OX1tzOjxWEgsr/YEUWSuPrQ00deKLh6D7OTWcvNHm12/7QPyRh8SYpyWvA4IZv8H/+GQWQEh/kwo95Q9OVW1A==}
+    engines: {node: '>=14.0.0'}
+
   tslib@2.3.0:
     resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
 
@@ -7254,6 +7271,21 @@ snapshots:
   '@zxcvbn-ts/core@3.0.4':
     dependencies:
       fastest-levenshtein: 1.0.16
+
+  '@zxing/browser@0.1.5(@zxing/library@0.21.3)':
+    dependencies:
+      '@zxing/library': 0.21.3
+    optionalDependencies:
+      '@zxing/text-encoding': 0.9.0
+
+  '@zxing/library@0.21.3':
+    dependencies:
+      ts-custom-error: 3.3.1
+    optionalDependencies:
+      '@zxing/text-encoding': 0.9.0
+
+  '@zxing/text-encoding@0.9.0':
+    optional: true
 
   abbrev@2.0.0: {}
 
@@ -9987,6 +10019,8 @@ snapshots:
   ts-api-utils@2.5.0(typescript@6.0.3):
     dependencies:
       typescript: 6.0.3
+
+  ts-custom-error@3.3.1: {}
 
   tslib@2.3.0: {}
 

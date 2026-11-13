@@ -5,26 +5,36 @@ const emit = defineEmits<{ scan: [value: string] }>()
 const visible = ref(false), text = ref(''), active = ref(false), video = ref<HTMLVideoElement>()
 const input = ref<{ focus: () => void }>()
 let stream: MediaStream | undefined, timer: number | undefined
-const supported = computed(() => window.isSecureContext && 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia)
-const stop = () => { active.value = false; if (timer) window.clearTimeout(timer); timer = undefined; stream?.getTracks().forEach((track) => track.stop()); stream = undefined }
+let scanner: { stop: () => void } | undefined
+let cameraRequest = 0
+const supported = computed(() => window.isSecureContext && !!navigator.mediaDevices?.getUserMedia)
+const stop = () => { cameraRequest++; active.value = false; if (timer) window.clearTimeout(timer); timer = undefined; scanner?.stop(); scanner = undefined; stream?.getTracks().forEach((track) => track.stop()); stream = undefined }
 const submit = () => { const value = text.value.trim(); if (!value) return; emit('scan', value); text.value = ''; visible.value = false; stop() }
-const open = async () => { visible.value = true; text.value = ''; await nextTick(); input.value?.focus() }
+const open = async () => { visible.value = true; text.value = ''; await nextTick(); input.value?.focus(); if (supported.value) await camera() }
 const camera = async () => {
   if (!supported.value) return
+  const requestId = ++cameraRequest
   try {
-    const Detector = (window as any).BarcodeDetector
-    const preferred = ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e']
-    const available: string[] = await Detector.getSupportedFormats()
-    const formats = preferred.filter((format) => available.includes(format))
-    if (!formats.length) { ElMessage.warning('浏览器不支持常用条码格式，请使用扫码枪输入'); return }
-    const detector = new Detector({ formats })
-    if (!visible.value) return
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    if (!visible.value) { stop(); return }
-    active.value = true; await nextTick(); if (!video.value) { stop(); return }; video.value.srcObject = stream; await video.value.play()
-    const detect = async () => { if (!active.value || !video.value) return; try { const codes = await detector.detect(video.value); if (codes.length) { text.value = codes[0].rawValue; submit(); return } } catch { /* Continue scanning subsequent frames. */ } if (active.value) timer = window.setTimeout(detect, 200) }
-    await detect()
-  } catch { stop(); ElMessage.warning('无法开启摄像头，请检查权限或使用扫码枪输入') }
+    const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    if (!visible.value || requestId !== cameraRequest) { media.getTracks().forEach((track) => track.stop()); return }
+    stream = media; active.value = true; await nextTick()
+    if (!video.value || requestId !== cameraRequest) { stop(); return }
+    if ('BarcodeDetector' in window) {
+      const Detector = (window as any).BarcodeDetector
+      const preferred = ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e']
+      const available: string[] = await Detector.getSupportedFormats()
+      const formats = preferred.filter((format) => available.includes(format))
+      if (formats.length) {
+        const detector = new Detector({ formats }); video.value.srcObject = media; await video.value.play()
+        const detect = async () => { if (!active.value || !video.value || requestId !== cameraRequest) return; try { const codes = await detector.detect(video.value); if (codes.length) { text.value = codes[0].rawValue; submit(); return } } catch { /* Continue with the next frame. */ } if (active.value) timer = window.setTimeout(detect, 200) }
+        await detect(); return
+      }
+    }
+    const { BrowserMultiFormatReader } = await import('@zxing/browser')
+    if (!video.value || requestId !== cameraRequest) return
+    const controls = await new BrowserMultiFormatReader().decodeFromStream(media, video.value, (result) => { if (result && requestId === cameraRequest) { text.value = result.getText(); submit() } })
+    if (requestId !== cameraRequest) controls.stop(); else scanner = controls
+  } catch { if (requestId === cameraRequest) { stop(); ElMessage.warning('无法开启摄像头，请检查权限或使用扫码枪输入') } }
 }
 onBeforeUnmount(stop)
 </script>
@@ -33,7 +43,7 @@ onBeforeUnmount(stop)
   <el-dialog v-model="visible" title="扫码录入" width="min(420px, 94vw)" append-to-body @closed="stop">
     <div class="scan-intro"><span class="scan-icon" aria-hidden="true">⌗</span><div><strong>扫描条码或二维码</strong><p>使用 PDA 扫码枪，或手动输入后确认</p></div></div>
     <el-input ref="input" v-model="text" placeholder="扫描或输入条码" @keydown.enter.prevent.stop="submit" />
-    <p v-if="!supported">当前页面或浏览器不支持摄像头扫码，请使用 PDA 扫码枪；摄像头通常需要 HTTPS。</p>
+    <p v-if="!supported">当前地址无法启用摄像头，请使用扫码枪或 HTTPS 地址。</p>
     <div v-else><el-button v-if="!active" native-type="button" @click="camera">打开摄像头扫码</el-button><el-button v-else native-type="button" @click="stop">关闭摄像头</el-button><video v-if="active" ref="video" playsinline muted class="scan-video"></video></div>
     <template #footer><el-button native-type="button" @click="visible = false">取消</el-button><el-button native-type="button" type="primary" @click="submit">确认</el-button></template>
   </el-dialog>

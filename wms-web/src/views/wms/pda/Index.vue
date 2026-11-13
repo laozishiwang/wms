@@ -38,6 +38,17 @@ const logout = async () => {
 
 type Tab = 'receipt' | 'shipment' | 'movement' | 'check' | 'inventory'
 const tab = ref<Tab>('receipt')
+const scrollArea = ref<HTMLElement>()
+const scrollIndicator = reactive({ visible: false, top: 0, height: 100 })
+const updateScrollIndicator = () => {
+  const el = scrollArea.value
+  if (!el) return
+  const max = el.scrollHeight - el.clientHeight
+  const height = Math.max(8, Math.min(100, (el.clientHeight / el.scrollHeight) * 100))
+  const top = max > 0 ? (el.scrollTop / max) * (100 - height) : 0
+  if (scrollIndicator.visible !== (max > 1) || Math.abs(scrollIndicator.top - top) > 0.1 || Math.abs(scrollIndicator.height - height) > 0.1) Object.assign(scrollIndicator, { visible: max > 1, top, height })
+}
+onUpdated(updateScrollIndicator)
 const home = ref(true)
 const summary = ref<WmsHomeOrderSummaryVO[]>([])
 const canViewSummary = checkPermi(['wms:home:query'])
@@ -396,14 +407,13 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 </script>
 
 <template>
-  <main class="pda">
+  <main ref="scrollArea" class="pda" @scroll.passive="updateScrollIndicator">
     <header><div><h1>{{ home ? '工作台' : labels[tab] }}</h1></div><button @click="logout">退出登录</button></header>
     <section v-if="home" class="dashboard">
-      <div v-if="canViewSummary" class="welcome"><div class="welcome-heading"><div><span>仓储作业</span><p>单据总览</p></div><Icon icon="ep:data-analysis" :size="25" /></div><div class="overview"><div v-for="item in [{type:1,label:'入库'},{type:2,label:'出库'},{type:3,label:'移库'},{type:4,label:'盘库'}]" :key="item.type"><span>{{ item.label }}</span><strong>{{ summaryCount(item.type) }}</strong></div></div></div>
-      <div class="quick-create"><button @click="openDashboardWork('receipt')"><Icon icon="ep:circle-plus" :size="23" />入库作业<Icon icon="ep:arrow-right" :size="15" /></button><button @click="openDashboardWork('shipment')"><Icon icon="ep:circle-plus" :size="23" />出库作业<Icon icon="ep:arrow-right" :size="15" /></button></div>
-      <h2>仓库作业 <small>选择作业类型</small></h2>
+      <div v-if="canViewSummary" class="welcome"><div class="welcome-heading"><div><p>单据总览</p></div><Icon icon="ep:data-analysis" :size="25" /></div><div class="overview"><div v-for="item in [{type:1,label:'入库'},{type:2,label:'出库'},{type:3,label:'移库'},{type:4,label:'盘库'}]" :key="item.type"><span>{{ item.label }}</span><strong>{{ summaryCount(item.type) }}</strong></div></div></div>
+      <h2>仓库作业</h2>
       <div class="work-grid"><button v-for="(label, key) in labels" :key="key" @click="openDashboardWork(key as Tab)"><span class="work-icon"><Icon :icon="{ receipt: 'ep:download', shipment: 'ep:upload', movement: 'ep:sort', check: 'ep:circle-check', inventory: 'ep:box' }[key]" /></span><strong>{{ label }}</strong></button></div>
-      <template v-if="canViewSummary"><h2>单据进度 <small>草稿可点击查看</small></h2><div class="progress-grid"><div v-for="state in [{status:1,label:'待审批',icon:'ep:document-checked'}, {status:0,label:'草稿',icon:'ep:edit-pen'}]" :key="state.status" class="progress-card"><div class="progress-heading"><Icon :icon="state.icon" :size="19" /><strong>{{ state.label }}</strong><Icon icon="ep:arrow-right" :size="14" /></div><div class="progress-counts"><div v-for="item in [{type:1,label:'入库',tab:'receipt'},{type:2,label:'出库',tab:'shipment'},{type:3,label:'移库',tab:'movement'},{type:4,label:'盘库',tab:'check'}]" :key="item.type" @click="state.status === 0 && openDashboardWork(item.tab as Tab, state.status)"><span>{{ item.label }}</span><b>{{ summaryStatus(item.type, state.status) }}</b></div></div></div></div></template>
+      <template v-if="canViewSummary"><h2>单据进度</h2><div class="progress-grid"><div v-for="state in [{status:1,label:'待审批',icon:'ep:document-checked'}, {status:0,label:'草稿',icon:'ep:edit-pen'}]" :key="state.status" class="progress-card"><div class="progress-heading"><Icon :icon="state.icon" :size="19" /><strong>{{ state.label }}</strong><Icon icon="ep:arrow-right" :size="14" /></div><div class="progress-counts"><div v-for="item in [{type:1,label:'入库',tab:'receipt'},{type:2,label:'出库',tab:'shipment'},{type:3,label:'移库',tab:'movement'},{type:4,label:'盘库',tab:'check'}]" :key="item.type" @click="state.status === 0 && openDashboardWork(item.tab as Tab, state.status)"><span>{{ item.label }}</span><b>{{ summaryStatus(item.type, state.status) }}</b></div></div></div></div></template>
     </section>
     <template v-else>
     <button class="home-link" @click="goHome">‹ 工作台</button>
@@ -455,6 +465,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
     </template>
     <section v-else class="content"><ApprovalActions v-if="(approvalEnabled || selected.status === 1) && !dirty && tab !== 'inventory'" :before-submit="canSubmitApproval" :type="tab" :id="selected.id" :status="selected.status" @changed="selected = undefined; load()" /><button class="back" @click="backToList">‹ 返回列表</button><h2>{{ selected.no }}</h2><p>{{ tab === 'movement' ? `${selected.sourceWarehouseName} → ${selected.targetWarehouseName}` : selected.warehouseName }}</p><form v-if="tab === 'check' && selected.status === 0" class="search" @submit.prevent="scanCheck"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号，数量加 1" /><ScanButton @scan="(value) => { scanCode = value; scanCheck() }" /><button>扫码录入</button></form><p v-if="tab === 'check' && selected.status === 0">扫码会在当前实盘数量上累加。<button class="back" @click="resetCheck">实盘数量清零</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check' || tab === 'movement') && selected.status === 0" class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描库位二维码以核对对应明细" /><ScanButton @scan="(value) => { locationScan = value; scanLocation() }" /><button>选择库位</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check' || tab === 'movement') && selectedLocation">核对库位：{{ selectedLocation.name }} <button class="back" @click="selectedLocation = undefined">清除</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0" class="search" @submit.prevent="scanOrder"><input v-model="scanCode" placeholder="扫描序列号或 SKU 编号" /><ScanButton @scan="(value) => { scanCode = value; scanOrder() }" /><button>扫码核对</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">核对数据仅在本次操作中保留</p><article v-for="item in visibleDetails" :key="item.id"><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p><p v-if="item.batchNo">批次：{{ item.batchNo }}</p><p v-if="tab !== 'receipt'">到货记录：{{ item.arrivalId === 0 ? '历史未分配' : item.arrivalId == null ? '未选择' : item.arrivalId }}</p><p v-if="item.locationId">库位 ID：{{ item.locationId }}</p><p v-if="tab === 'movement'">来源库位：{{ item.sourceLocationId || '未分配' }} → 目标库位：{{ item.targetLocationId || '未分配' }}</p><b>{{ tab === 'check' ? '账面数量' : '数量' }} {{ item.quantity }} {{ item.unit }}</b><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">已核对 <el-input-number v-if="!item.serialNos?.length" v-model="verified[item.id]" :min="0" :max="Number(item.quantity)" :precision="QUANTITY_PRECISION" :controls="false" /><span v-else>{{ verified[item.id] || 0 }}</span> / {{ item.quantity }}</p><p v-if="tab === 'check' && selected.status === 0">实盘序列号 <SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></p><p v-if="tab === 'check'">实盘数量 <el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><span v-else>{{ item.checkQuantity }}</span></p></article><button v-if="tab === 'check' && selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="saveCheck">保存盘点数量</button><button v-if="selected.status === 0 && !approvalEnabled" v-hasPermi="[`wms:${tab}-order:complete`]" class="primary" @click="complete">确认完成{{ labels[tab] }}</button></section>
     </template>
+    <div v-if="scrollIndicator.visible" class="scroll-indicator" aria-hidden="true"><span :style="{ top: `${scrollIndicator.top}%`, height: `${scrollIndicator.height}%` }"></span></div>
     <nav class="bottom-nav" aria-label="移动端导航"><button :class="{ chosen: home }" @click="goHome"><Icon icon="ep:house" :size="22" />工作台</button><button :class="{ chosen: !home && tab === 'inventory' }" @click="openWork('inventory')"><Icon icon="ep:box" :size="22" />库存</button><button :class="{ chosen: !home && tab !== 'inventory' }" @click="openWork('receipt')"><Icon icon="ep:document" :size="22" />单据</button></nav>
     <button v-hasPermi="[`wms:${tab}-order:create`]" v-if="!home && !selected && !creatingReceipt && !creatingMovement && !creatingCheck && warehouseId && tab !== 'inventory'" class="floating-add" aria-label="新建单据" @click="tab === 'check' ? creatingCheck = true : tab === 'movement' ? creatingMovement = true : (selectedLocation = undefined, receiptRows = [], clearBatchInput(), receiptType = getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value, creatingReceipt = true)">＋</button>
   </main>
@@ -468,7 +479,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 .warehouse-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; } .warehouse-choices button { padding:12px; text-align:left; background:white; border:1px solid #dce5f1; border-radius:8px; color:#17263c; }
 .sku-picker { max-height: 48vh; overflow-y: auto; } .sku-option { display:grid; width:100%; gap:6px; text-align:left; padding:12px; background:white; border-bottom:1px solid #e5ebf3; color:#17263c; } .sku-option span { color:#77879c; font-size:13px; }
 
-.pda { height: 100vh; height: 100dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(90px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.pda { height: 100vh; height: 100dvh; min-height: 0; scrollbar-width: thin; scrollbar-color: #8ca5cc transparent; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(90px + env(safe-area-inset-bottom)); box-sizing: border-box; }
 .pda > header { position: sticky; top: 0; z-index: 4; padding: 14px 18px; border-bottom: 1px solid #edf1f6; }
 .pda > header h1 { font-size: 21px; font-weight: 700; }.pda > header button { background: #f3f6fb; color: #61728a; border-radius: 10px; padding: 9px 12px; }
 nav:not(.bottom-nav) { margin: 8px 16px; padding: 5px; gap: 3px; border-radius: 12px; background: #e9eef6; overflow-x: auto; }
@@ -515,4 +526,8 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .item-action strong { color:#253954; font-size:14px; }.manual-scan { margin-top:4px; }
 .search :deep(.el-button) { min-height:44px; border-radius:12px; font-weight:600; }
 .warehouse-choices button,.back { border:1px solid #dce7f8; background:#f7faff; color:#245eea; font-weight:600; }
+.pda::-webkit-scrollbar { width: 5px; }
+.pda::-webkit-scrollbar-thumb { background: #8ca5cc; border-radius: 8px; }
+.scroll-indicator { position: fixed; z-index: 8; top: 66px; bottom: calc(80px + env(safe-area-inset-bottom)); right: max(2px, calc((100vw - 640px) / 2 + 2px)); width: 4px; pointer-events: none; }
+.scroll-indicator span { position: absolute; left: 0; width: 100%; border-radius: 5px; background: rgba(83, 108, 146, .5); }
 </style>
