@@ -185,7 +185,9 @@ const scanReceiptSku = async () => {
   const row = matchingRows[0]
   if (row?.serialNos?.length) { ElMessage.warning('该明细已录入序列号，请继续扫描序列号'); return }
   if (row && tab.value === 'receipt' && (row.productionDate !== produced || row.expirationDate !== expires)) { ElMessage.warning('同一明细的批次日期不一致，请核对'); return }
-  if (available !== undefined && (row?.quantity || 0) + 1 > available) { ElMessage.warning('数量超过所选库位和批次的库存'); return }
+  if (row?.arrivalId !== undefined && row.available === undefined) { ElMessage.warning('正在获取到货库存，请稍后重试'); return }
+  const limit = row?.arrivalId !== undefined ? row.available : available
+  if (limit !== undefined && (row?.quantity || 0) + 1 > limit) { ElMessage.warning('数量超过所选到货记录的可用库存'); return }
   if (row) row.quantity += 1
   else receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, batchNo, productionDate: produced, expirationDate: expires, available, netLength: unique[0].netLength, grossLength: unique[0].grossLength, netWeight: unique[0].netWeight, grossWeight: unique[0].grossWeight, length: unique[0].length, width: unique[0].width, height: unique[0].height, price: unique[0].costPrice, salesPrice: unique[0].sellingPrice })
   receiptScan.value = ''
@@ -202,6 +204,7 @@ const selectRowArrival = async (row: (typeof receiptRows.value)[number], arrival
   row.available = undefined
   if (arrivalId === undefined || !warehouseId.value || !row.sku.id) return
   const balances = await listArrivalBalances(warehouseId.value, row.sku.id)
+  if (row.arrivalId !== arrivalId) return
   const selected = balances.find((item) => (item.arrivalId ?? 0) === arrivalId && (item.locationId ?? undefined) === row.locationId && (item.batchNo || undefined) === row.batchNo)
   row.available = Number(selected?.quantity || 0)
 }

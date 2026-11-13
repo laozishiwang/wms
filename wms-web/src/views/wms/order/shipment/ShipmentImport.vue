@@ -56,7 +56,7 @@ const upload = async (event: Event) => {
       const total = record.totalPrice == null ? undefined : Number(record.totalPrice)
       const price = record.price == null ? dividePrice(total, quantity) : Number(record.price)
       if ((price !== undefined && (!Number.isFinite(price) || price < 0)) || (total !== undefined && (!Number.isFinite(total) || total < 0))) { message.error(`第 ${index + 1} 行价格或金额不正确`); return }
-      rows.push({ skuId: sku.id, itemId: sku.itemId, itemCode: sku.itemCode, itemName: sku.itemName, skuCode: sku.code, skuName: sku.name, unit: sku.unit, warehouseId: props.warehouseId, arrivalId, quantity, price, totalPrice: total ?? multiplyPrice(quantity, price), batchNo, locationId, serialNos, availableQuantity: Number(balance.quantity) })
+      rows.push({ skuId: sku.id, itemId: sku.itemId, itemCode: sku.itemCode, itemName: sku.itemName, skuCode: sku.code, skuName: sku.name, unit: sku.unit, warehouseId: props.warehouseId, arrivalId, quantity, price, totalPrice: total ?? multiplyPrice(quantity, price), batchNo, locationId, serialNos })
     }
     emit('imported', rows); message.success(`已导入 ${rows.length} 行，请核对后保存`)
   } finally { loading.value = false; element.value = '' }
