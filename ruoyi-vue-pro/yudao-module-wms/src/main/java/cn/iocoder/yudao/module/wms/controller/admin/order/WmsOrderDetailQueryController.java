@@ -24,7 +24,7 @@ public class WmsOrderDetailQueryController {
         @RequestParam(required = false) String locationKeyword, @RequestParam(required = false) String batchNo, @RequestParam(required = false) String palletNo,
         @RequestParam(required = false) String boxNo, @RequestParam(required = false) String rollNo,
         @RequestParam(required = false) Integer status, @RequestParam(required = false) Integer type,
-        @RequestParam(required = false) String startTime, @RequestParam(required = false) String endTime, @RequestParam(required = false) String optionField, @RequestParam(required = false) String optionSearch) {
+        @RequestParam(required = false) String startTime, @RequestParam(required = false) String endTime, @RequestParam(required = false) String optionField, @RequestParam(required = false) String optionSearch, @RequestParam Map<String, String> rangeParams) {
         boolean receipt = "receipt".equals(direction);
         String prefix = receipt ? "receipt" : "shipment";
         String arrival = receipt ? "d" : "a";
@@ -51,8 +51,39 @@ public class WmsOrderDetailQueryController {
         }
         if (startTime != null && !startTime.isBlank()) { where.append(" AND o.order_time>=:startTime"); p.addValue("startTime",startTime); }
         if (endTime != null && !endTime.isBlank()) { where.append(" AND o.order_time<=:endTime"); p.addValue("endTime",endTime); }
+        Map<String, String> textFields = Map.of("merchantName", "m.name", "bizOrderNo", "o.biz_order_no", "remark", "o.remark", "serialNo", "d.serial_nos");
+        for (var field : textFields.entrySet()) {
+            String value = rangeParams.get(field.getKey());
+            if (value != null && !value.isBlank() && !field.getKey().equals(optionField)) { boolean selected = field.getKey().equals("merchantName") || field.getKey().equals("bizOrderNo"); where.append(" AND ").append(field.getValue()).append(selected ? " = :" : " LIKE :").append(field.getKey()); p.addValue(field.getKey(), selected ? value : "%" + value + "%"); }
+        }
+        String arrivalId = rangeParams.get("arrivalId");
+        if (arrivalId != null && !arrivalId.isBlank()) { where.append(receipt ? " AND d.id=:arrivalId" : " AND COALESCE(d.arrival_id, 0)=:arrivalId"); p.addValue("arrivalId", Long.valueOf(arrivalId)); }
+        for (String dateField : List.of("productionDate", "expirationDate")) {
+            String column = dateField.equals("productionDate") ? "d.production_date" : "d.expiration_date";
+            for (String bound : List.of("From", "To")) {
+                String key = dateField + bound, value = rangeParams.get(key);
+                if (value != null && !value.isBlank()) { where.append(" AND ").append(column).append(bound.equals("From") ? " >= :" : " <= :").append(key); p.addValue(key, value); }
+            }
+        }
+        Map<String, String> numericFields = new LinkedHashMap<>();
+        numericFields.put("netLength", arrival + ".net_length"); numericFields.put("grossLength", arrival + ".gross_length");
+        numericFields.put("netWeight", arrival + ".net_weight"); numericFields.put("grossWeight", arrival + ".gross_weight");
+        numericFields.put("length", arrival + ".length"); numericFields.put("width", arrival + ".width"); numericFields.put("height", arrival + ".height");
+        numericFields.put("arrivalCostPrice", arrival + ".price"); numericFields.put("salesPrice", arrival + ".sales_price");
+        numericFields.put("quantity", "d.quantity"); numericFields.put("price", "d.price"); numericFields.put("totalPrice", "d.total_price");
+        for (var field : numericFields.entrySet()) {
+            for (String bound : List.of("Min", "Max")) {
+                String key = field.getKey() + bound;
+                String value = rangeParams.get(key);
+                if (value != null && !value.isBlank()) {
+                    where.append(" AND ").append(field.getValue()).append(bound.equals("Min") ? " >= :" : " <= :").append(key);
+                    p.addValue(key, new java.math.BigDecimal(value));
+                }
+            }
+        }
         if (optionField != null && !optionField.isBlank()) {
-            Map<String,String> fields = Map.of("warehouseId", "w.id", "no", "o.no", "skuCode", "s.code", "itemName", "i.name", "locationKeyword", "loc.id", "batchNo", "d.batch_no", "palletNo", arrival + ".pallet_no", "boxNo", arrival + ".box_no", "rollNo", arrival + ".roll_no");
+            Map<String,String> fields = new HashMap<>(Map.of("warehouseId", "w.id", "no", "o.no", "skuCode", "s.code", "itemName", "i.name", "locationKeyword", "loc.id", "batchNo", "d.batch_no", "palletNo", arrival + ".pallet_no", "boxNo", arrival + ".box_no", "rollNo", arrival + ".roll_no"));
+            fields.put("merchantName", "m.name"); fields.put("bizOrderNo", "o.biz_order_no");
             String col = fields.get(optionField);
             if (col == null) throw new IllegalArgumentException("Unknown option field");
             String label = "locationKeyword".equals(optionField) ? "CONCAT(loc.code, ' ', loc.name)" : ("warehouseId".equals(optionField) ? "w.name" : col);

@@ -19,6 +19,13 @@ const loadOptions = async (field: string, term = '') => {
 }
 const fields = [{key:'warehouseId',label:'仓库'}, {key:'no',label:'单据号'}, {key:'itemName',label:'物品名称'}, {key:'skuCode',label:'规格编号'}, {key:'locationKeyword',label:'库位'}, {key:'batchNo',label:'批次号'}, {key:'palletNo',label:'托盘号'}, {key:'boxNo',label:'箱号'}, {key:'rollNo',label:'卷号'}]
 
+const advancedVisible = ref(false)
+const rangeGroups = [
+  { label: '长度（cm）', fields: [{key:'netLength',label:'净长'}, {key:'grossLength',label:'毛长'}] },
+  { label: '重量（kg）', fields: [{key:'netWeight',label:'净重'}, {key:'grossWeight',label:'毛重'}] },
+  { label: '尺寸（cm）', fields: [{key:'length',label:'长'}, {key:'width',label:'宽'}, {key:'height',label:'高'}] },
+  { label: '金额与数量', fields: [{key:'quantity',label:'数量'}, {key:'price',label:'单据单价'}, {key:'arrivalCostPrice',label:'到货成本价'}, {key:'salesPrice',label:'销售价'}, {key:'totalPrice',label:'金额'}] }
+]
 const settingsVisible = ref(false)
 const draftColumns = ref<{key: string; label: string; show: boolean}[]>([])
 const openSettings = () => { draftColumns.value = columns.value.map((column) => ({ ...column })); settingsVisible.value = true }
@@ -55,8 +62,39 @@ defineExpose({ open })
       <el-form-item label="状态"><el-select v-model="query.status" clearable style="width: 150px"><el-option v-for="item in getIntDictOptions(DICT_TYPE.WMS_ORDER_STATUS)" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
       <el-form-item label="类型"><el-select v-model="query.type" clearable style="width: 150px"><el-option v-for="item in getIntDictOptions(direction === 'receipt' ? DICT_TYPE.WMS_RECEIPT_ORDER_TYPE : DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE)" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
       <el-form-item label="单据日期"><el-date-picker v-model="dates" type="daterange" value-format="YYYY-MM-DD HH:mm:ss" :default-time="[new Date('2000-01-01 00:00:00'), new Date('2000-01-01 23:59:59')]" start-placeholder="开始日期" end-placeholder="结束日期" /></el-form-item>
-      <el-form-item><el-button type="primary" @click="search">查询</el-button><el-button @click="reset">重置</el-button><el-button @click="openSettings">表格设置</el-button></el-form-item>
+      <el-form-item><el-button type="primary" @click="search">查询</el-button><el-button @click="reset">重置</el-button><el-button @click="advancedVisible = !advancedVisible">{{ advancedVisible ? '收起高级筛选' : '高级筛选' }}</el-button><el-button @click="openSettings">表格设置</el-button></el-form-item>
     </el-form>
+    <div v-show="advancedVisible" class="advanced-filters">
+      <div class="filter-group">
+        <strong>单据与追溯</strong>
+        <div v-for="field in [{key:'merchantName',label:'供应商/客户'}, {key:'bizOrderNo',label:'业务单号'}]" :key="field.key" class="filter-range">
+          <span>{{ field.label }}</span><el-select v-model="query[field.key]" clearable filterable remote :remote-method="(text: string) => loadOptions(field.key, text)" @visible-change="(shown: boolean) => shown && loadOptions(field.key)"><el-option v-for="option in optionLists[field.key] || []" :key="option.value" :value="option.value" :label="option.label" /></el-select>
+        </div>
+        <div v-for="field in [{key:'serialNo',label:'序列号'}, {key:'remark',label:'备注'}]" :key="field.key" class="filter-range">
+          <span>{{ field.label }}</span><el-input v-model="query[field.key]" clearable :placeholder="`输入${field.label}`" />
+        </div>
+        <div class="filter-range"><span>到货记录 ID</span><el-input-number v-model="query.arrivalId" :min="0" :precision="0" :controls="false" :placeholder="direction === 'shipment' ? '0 为未分配' : '入库明细 ID'" /></div>
+      </div>
+      <div class="filter-group">
+        <strong>生产与到期日期</strong>
+        <div v-for="field in [{key:'productionDate',label:'生产日期'}, {key:'expirationDate',label:'到期日期'}]" :key="field.key" class="filter-range">
+          <span>{{ field.label }}</span>
+          <el-date-picker v-model="query[field.key + 'From']" type="date" value-format="YYYY-MM-DD 00:00:00" placeholder="开始日期" />
+          <span>至</span>
+          <el-date-picker v-model="query[field.key + 'To']" type="date" value-format="YYYY-MM-DD 23:59:59" placeholder="结束日期" />
+        </div>
+      </div>
+      <div v-for="group in rangeGroups" :key="group.label" class="filter-group">
+        <strong>{{ group.label }}</strong>
+        <div v-for="field in group.fields" :key="field.key" class="filter-range">
+          <span>{{ field.label }}</span>
+          <el-input-number v-model="query[field.key + 'Min']" :controls="false" placeholder="最小值" />
+          <span>至</span>
+          <el-input-number v-model="query[field.key + 'Max']" :controls="false" placeholder="最大值" />
+        </div>
+      </div>
+      <p class="filter-hint">范围包含边界；只填写一端即可，0 是有效值。出库到货属性来自关联的入库记录。</p>
+    </div>
     <el-table v-loading="loading" :data="rows" border>
       <el-table-column v-for="column in columns.filter((c) => c.show)" :key="column.key" :label="column.label" :prop="column.key" min-width="150" :fixed="column.key === 'no' ? 'left' : false">
         <template #default="{ row }">
@@ -82,4 +120,12 @@ defineExpose({ open })
     </el-dialog>
   </component>
 </template>
-<style scoped>.column-setting { display: flex; justify-content: space-between; padding: 4px 0; }</style>
+<style scoped>
+.column-setting { display: flex; justify-content: space-between; padding: 4px 0; }
+.advanced-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.filter-group { padding: 12px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; }
+.filter-range { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.filter-range > span:first-child { width: 80px; }
+.filter-range :deep(.el-input-number) { width: 110px; }
+.filter-hint { flex-basis: 100%; margin: 0; color: var(--el-text-color-secondary); font-size: 12px; }
+</style>
