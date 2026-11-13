@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import ScanButton from './ScanButton.vue'
 import { MovementOrderApi } from '@/api/wms/order/movement'
 import { WarehouseApi, type WarehouseVO } from '@/api/wms/md/warehouse'
 import request from '@/config/axios'
@@ -55,7 +56,7 @@ const save = async () => {
   <section class="movement-create">
     <button class="back" @click="emit('close')">‹ 返回</button><h2>新建移库草稿</h2>
     <p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select>
-    <p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form>
+    <p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" />
     <template v-if="sku"><p>{{ sku.name }}（{{ sku.code }}）</p>
       <p>批次</p><BatchSelect v-model="row.batchNo" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" @update:model-value="row.sourceLocationId = undefined; row.arrivalId = undefined" />
       <p>来源库位（留空为未分配）</p><BatchLocationSelect v-model="row.sourceLocationId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :batch-no="row.batchNo" @update:model-value="row.arrivalId = undefined" />
@@ -68,4 +69,14 @@ const save = async () => {
     <p><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
   </section>
 </template>
-<style scoped>.movement-create { padding: 16px; } .movement-create :deep(.el-select) { width: 100%; } .movement-create form { display:flex; gap:8px; }</style>
+<style scoped>
+.movement-create, .check-create { min-height: 100%; padding: 18px 16px 100px; color: #16243a; background: #f3f6fc; }
+h2 { margin: 12px 0 20px; font-size: 22px; }
+p { margin: 14px 0 7px; font-size: 14px; font-weight: 600; color: #52637a; }
+.back { border: 0; background: transparent; color: #3266d9; padding: 8px 0; font-size: 16px; }
+form { display:flex; gap:8px; margin-bottom: 10px; }
+:deep(.el-select), :deep(.el-input-number) { width:100%; }
+:deep(.el-input__wrapper), :deep(.el-select__wrapper) { min-height: 46px; border-radius: 10px; }
+article { margin: 12px 0; padding: 16px; border-radius: 14px; background: white; box-shadow: 0 5px 20px #2137580a; }
+article p { font-weight: normal; }
+</style>
