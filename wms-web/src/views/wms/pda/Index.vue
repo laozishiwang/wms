@@ -2,6 +2,7 @@
 import { ElMessageBox, ElMessage } from 'element-plus'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import MovementCreate from './MovementCreate.vue'
+import CheckCreate from './CheckCreate.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import { listArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
 import ApprovalActions from '@/views/wms/order/components/ApprovalActions.vue'
@@ -54,6 +55,7 @@ const warehouseChoices = ref<WarehouseVO[]>([])
 const showWarehouseChoices = ref(false)
 const creatingReceipt = ref(false)
 const creatingMovement = ref(false)
+const creatingCheck = ref(false)
 const receiptType = ref<number | undefined>(101)
 const receiptScan = ref('')
 const skuPickerOpen = ref(false)
@@ -108,7 +110,7 @@ const load = async () => {
   } finally { loading.value = false }
 }
 const confirmDiscard = async () => {
-  const unsavedReceipt = (creatingReceipt.value && receiptRows.value.length > 0) || creatingMovement.value
+  const unsavedReceipt = (creatingReceipt.value && receiptRows.value.length > 0) || creatingMovement.value || creatingCheck.value
   if (!dirty.value && !unsavedReceipt) return true
   try {
     await ElMessageBox.confirm(unsavedReceipt ? '扫码明细尚未保存，离开将丢失修改。确定离开吗？' : '盘点数量尚未保存，离开将丢失修改。确定离开吗？', '提示', { type: 'warning' })
@@ -118,16 +120,16 @@ const confirmDiscard = async () => {
 }
 const changeTab = async (value: Tab) => {
   if (value === tab.value || !(await confirmDiscard())) return
-  creatingMovement.value = false; tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); load()
+  creatingCheck.value = false; creatingMovement.value = false; tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); load()
 }
 const openWork = async (value: Tab) => {
   if (!home.value) { await changeTab(value); return }
-  home.value = false; creatingMovement.value = false; tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false
+  home.value = false; creatingCheck.value = false; creatingMovement.value = false; tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false
   await load()
 }
 const goHome = async () => {
   if (!(await confirmDiscard())) return
-  creatingMovement.value = false; home.value = true; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []
+  creatingCheck.value = false; creatingMovement.value = false; home.value = true; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []
 }
 const backToList = async () => { if (await confirmDiscard()) selected.value = undefined }
 onBeforeRouteLeave(() => confirmDiscard())
@@ -137,6 +139,7 @@ const warnBeforeUnload = (event: BeforeUnloadEvent) => {
 onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload))
 onUnmounted(() => window.removeEventListener('beforeunload', warnBeforeUnload))
 const search = () => { page.value = 1; load() }
+const cancelCheck = async () => { if (await confirmDiscard()) creatingCheck.value = false }
 const cancelMovement = async () => { if (await confirmDiscard()) creatingMovement.value = false }
 const cancelReceipt = async () => {
   if (!(await confirmDiscard())) return
@@ -408,11 +411,13 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <article v-for="(row, index) in receiptRows" :key="row.rowId"><strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong><p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p><el-input-number v-model="row.quantity" :disabled="!!row.serialNos?.length" :min="0.01" :max="row.available" :precision="QUANTITY_PRECISION" /><ArrivalSelect v-if="tab === 'shipment'" :model-value="row.arrivalId" @update:model-value="selectRowArrival(row, $event)" :warehouse-id="warehouseId" :sku-id="row.sku.id" :location-id="row.locationId" :batch-no="row.batchNo" /><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /><details v-if="tab === 'receipt'"><summary>到货信息</summary><div class="arrival-grid"><label v-for="field in arrivalFields" :key="field.key">{{ field.label }}<input v-if="field.text" v-model="row[field.key]" maxlength="64" :placeholder="field.label" /><input v-else v-model.number="row[field.key]" type="number" min="0" step="any" :placeholder="field.label" /></label></div></details><button class="back" @click="receiptRows.push({ ...row, rowId: ++nextReceiptRowId, quantity: 1, serialNos: [], arrivalId: undefined, available: undefined, palletNo: undefined, boxNo: undefined, rollNo: undefined })">复制为新明细</button><button class="back" @click="receiptRows.splice(index, 1)">删除</button></article>
       <button class="primary" :disabled="savingReceipt" @click="saveReceipt">保存{{ tab === 'shipment' ? '出库' : '入库' }}草稿</button>
     </section>
+    <CheckCreate v-else-if="creatingCheck && warehouseId" :warehouse-id="warehouseId" @close="cancelCheck" @saved="creatingCheck = false; load()" />
     <MovementCreate v-else-if="creatingMovement && warehouseId" :source-warehouse-id="warehouseId" @close="cancelMovement" @saved="creatingMovement = false; load()" />
     <template v-else-if="!selected">
       <form class="search" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="扫描仓库二维码或输入仓库编号" /><button>选择仓库</button></form>
       <div class="content"><button class="back" @click="chooseWarehouse">从列表选择仓库</button><div v-if="showWarehouseChoices" class="warehouse-choices"><button v-for="warehouse in warehouseChoices" :key="warehouse.id" @click="applyWarehouse(warehouse)">{{ warehouse.name }}（{{ warehouse.code }}）</button><span v-if="!warehouseChoices.length">暂无仓库</span></div></div>
       <div v-if="warehouseId" class="content">当前仓库：{{ warehouseName }} <button class="back" @click="clearWarehouse">清除</button></div>
+      <div v-if="tab === 'check' && warehouseId" class="content"><button v-hasPermi="['wms:check-order:create']" class="primary" @click="creatingCheck = true">新建盘点草稿</button></div>
       <div v-if="tab === 'movement' && warehouseId" class="content"><button v-hasPermi="['wms:movement-order:create']" class="primary" @click="creatingMovement = true">新建移库草稿</button></div>
       <div v-if="tab === 'receipt' && warehouseId" class="content"><button v-hasPermi="['wms:receipt-order:create']" class="primary" @click="selectedLocation = undefined; receiptRows = []; clearBatchInput(); receiptType = getIntDictOptions(DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value; creatingReceipt = true">扫码新建入库</button></div>
       <div v-if="tab === 'shipment' && warehouseId" class="content"><button v-hasPermi="['wms:shipment-order:create']" class="primary" @click="selectedLocation = undefined; receiptRows = []; clearBatchInput(); receiptType = getIntDictOptions(DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE)[0]?.value; creatingReceipt = true">扫码新建出库</button></div>

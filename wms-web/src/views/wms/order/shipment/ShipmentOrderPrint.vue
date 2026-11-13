@@ -59,6 +59,8 @@
               <div>{{ detail.skuName || '-' }}</div>
               <div v-if="detail.skuCode" class="text-12px">编号：{{ detail.skuCode }}</div>
               <div v-if="detail.batchNo" class="text-12px">批次：{{ detail.batchNo }}</div>
+              <div class="text-12px">库位 ID：{{ detail.locationId != null ? `#${detail.locationId}` : '未分配' }}</div>
+              <div class="text-12px">到货记录：{{ detail.arrivalId ? `#${detail.arrivalId}` : '未分配' }}</div>
               <div v-if="detail.serialNos?.length" class="text-12px">序列号：{{ detail.serialNos.join('，') }}</div>
             </td>
             <td class="border border-solid border-#dcdfe6 p-8px text-right">
