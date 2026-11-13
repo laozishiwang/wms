@@ -42,7 +42,7 @@ const scrollArea = ref<HTMLElement>()
 const scrollTrack = ref<HTMLElement>()
 const scrollIndicator = reactive({ visible: false, top: 0, height: 100 })
 const updateScrollIndicator = () => {
-  const el = scrollArea.value
+  const el = document.scrollingElement
   if (!el) return
   const max = el.scrollHeight - el.clientHeight
   const height = Math.max(8, Math.min(100, (el.clientHeight / el.scrollHeight) * 100))
@@ -52,20 +52,27 @@ const updateScrollIndicator = () => {
 onUpdated(updateScrollIndicator)
 onMounted(() => {
   const area = scrollArea.value!
+  const roots = [document.documentElement, document.body, document.getElementById('app')!]
+  const previousStyles = roots.map((root) => ({ overflow: root.style.overflow, height: root.style.height }))
+  roots.forEach((root) => { root.style.overflow = 'visible'; root.style.height = 'auto' })
+  document.documentElement.style.overflowY = 'auto'
   const resize = new ResizeObserver(updateScrollIndicator)
   const mutations = new MutationObserver(updateScrollIndicator)
   resize.observe(area)
   mutations.observe(area, { childList: true, subtree: true })
   window.addEventListener('resize', updateScrollIndicator)
+  window.addEventListener('scroll', updateScrollIndicator, { passive: true })
   updateScrollIndicator()
   onBeforeUnmount(() => {
     resize.disconnect()
     mutations.disconnect()
     window.removeEventListener('resize', updateScrollIndicator)
+    window.removeEventListener('scroll', updateScrollIndicator)
+    roots.forEach((root, index) => { root.style.overflow = previousStyles[index].overflow; root.style.height = previousStyles[index].height })
   })
 })
 const dragScroll = (event: PointerEvent) => {
-  const area = scrollArea.value!
+  const area = document.scrollingElement!
   const track = scrollTrack.value!
   const bounds = track.getBoundingClientRect()
   const thumbHeight = bounds.height * scrollIndicator.height / 100
@@ -438,7 +445,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 </script>
 
 <template>
-  <main ref="scrollArea" class="pda" @scroll.passive="updateScrollIndicator">
+  <main ref="scrollArea" class="pda">
     <header><div><h1>{{ home ? '工作台' : labels[tab] }}</h1></div><button @click="logout">退出登录</button></header>
     <section v-if="home" class="dashboard">
       <div v-if="canViewSummary" class="welcome"><div class="welcome-heading"><div><p>单据总览</p></div><Icon icon="ep:data-analysis" :size="25" /></div><div class="overview"><div v-for="item in [{type:1,label:'入库'},{type:2,label:'出库'},{type:3,label:'移库'},{type:4,label:'盘库'}]" :key="item.type"><span>{{ item.label }}</span><strong>{{ summaryCount(item.type) }}</strong></div></div></div>
@@ -478,14 +485,17 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
     <CheckCreate v-else-if="creatingCheck && warehouseId" :warehouse-id="warehouseId" @close="cancelCheck" @saved="creatingCheck = false; load()" />
     <MovementCreate v-else-if="creatingMovement && warehouseId" :source-warehouse-id="warehouseId" @close="cancelMovement" @saved="creatingMovement = false; load()" />
     <template v-else-if="!selected">
+      <section class="work-section warehouse-section"><h2>仓库</h2>
       <form class="search" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="扫描仓库二维码或输入仓库编号" /><ScanButton @scan="(value) => { warehouseCode = value; selectWarehouse() }" /><button>选择仓库</button></form>
       <div class="content"><button class="back" @click="chooseWarehouse">从列表选择仓库</button><div v-if="showWarehouseChoices" class="warehouse-choices"><button v-for="warehouse in warehouseChoices" :key="warehouse.id" @click="applyWarehouse(warehouse)">{{ warehouse.name }}（{{ warehouse.code }}）</button><span v-if="!warehouseChoices.length">暂无仓库</span></div></div>
       <div v-if="warehouseId" class="content">当前仓库：{{ warehouseName }} <button class="back" @click="clearWarehouse">清除</button></div>
-      <p v-if="!warehouseId && tab !== 'inventory'" class="warehouse-hint">先选择仓库，即可使用右下角 ＋ 新建单据</p>
+      </section>
+      <section class="work-section filter-section"><h2>筛选</h2>
       <div v-if="tab !== 'inventory'" class="list-filters"><el-select v-model="listStatus" clearable placeholder="单据状态" @change="search"><el-option v-for="option in getIntDictOptions(DICT_TYPE.WMS_ORDER_STATUS)" :key="option.value" :label="option.label" :value="option.value" /></el-select><el-date-picker v-model="listDates" type="daterange" value-format="YYYY-MM-DD HH:mm:ss" :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]" start-placeholder="开始日期" end-placeholder="结束日期" @change="search" /></div>
       <form class="search" @submit.prevent="search"><input v-model="keyword" :placeholder="tab === 'inventory' ? '扫描或输入 SKU 编号' : '扫描或输入单号'" /><ScanButton @scan="(value) => { keyword = value; search() }" /><button>查询</button></form>
+      </section>
       <div v-loading="loading" class="content">
-        <p class="hint">{{ labels[tab] }} · 共 {{ total }} 条</p>
+        <div class="results-heading"><h2>{{ tab === 'inventory' ? '库存列表' : '单据列表' }}</h2><span>共 {{ total }} 条</span></div>
         <article v-for="row in rows" :key="tab === 'inventory' ? `${row.warehouseId}-${row.skuId}` : row.id" @click="tab !== 'inventory' && open(row)">
           <template v-if="tab === 'inventory'"><strong>{{ row.itemName }} {{ row.skuName }}</strong><p>{{ row.skuCode }} · {{ row.warehouseName }}</p><b>库存 {{ row.quantity }} {{ row.unit }}</b></template>
           <template v-else><strong>{{ tab === 'movement' ? `${row.sourceWarehouseName || '未分配'} → ${row.targetWarehouseName || '未分配'}` : (row.warehouseName || '未分配仓库') }}</strong><span class="status"><dict-tag :type="DICT_TYPE.WMS_ORDER_STATUS" :value="row.status" /></span><p>{{ row.no }}</p><div class="card-totals"><span>数量 {{ row.totalQuantity ?? 0 }}</span><span>¥ {{ Number(row.totalPrice ?? 0).toFixed(2) }}</span></div><small>点击查看明细 ›</small></template>
@@ -510,7 +520,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 .warehouse-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; } .warehouse-choices button { padding:12px; text-align:left; background:white; border:1px solid #dce5f1; border-radius:8px; color:#17263c; }
 .sku-picker { max-height: 48vh; overflow-y: auto; } .sku-option { display:grid; width:100%; gap:6px; text-align:left; padding:12px; background:white; border-bottom:1px solid #e5ebf3; color:#17263c; } .sku-option span { color:#77879c; font-size:13px; }
 
-.pda { height: 100vh; height: 100dvh; min-height: 0; scrollbar-width: thin; scrollbar-color: #8ca5cc transparent; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(90px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.pda { height: auto; min-height: 100vh; overflow: visible; padding-bottom: calc(90px + env(safe-area-inset-bottom)); box-sizing: border-box; }
 .pda > header { position: sticky; top: 0; z-index: 4; padding: 14px 18px; border-bottom: 1px solid #edf1f6; }
 .pda > header h1 { font-size: 21px; font-weight: 700; }.pda > header button { background: #f3f6fb; color: #61728a; border-radius: 10px; padding: 9px 12px; }
 nav:not(.bottom-nav) { margin: 8px 16px; padding: 5px; gap: 3px; border-radius: 12px; background: #e9eef6; overflow-x: auto; }
@@ -561,4 +571,11 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .pda::-webkit-scrollbar-thumb { background: #8ca5cc; border-radius: 8px; }
 .scroll-indicator { position: fixed; z-index: 100; top: 66px; bottom: calc(80px + env(safe-area-inset-bottom)); right: max(0px, calc((100vw - 640px) / 2)); width: 20px; touch-action: none; }
 .scroll-indicator span { position: absolute; right: 3px; width: 5px; border-radius: 5px; background: #8195b3; box-shadow: 0 0 0 1px rgba(255,255,255,.7); }
+.work-section { margin: 14px 16px; padding: 16px; border: 1px solid #e8eef8; border-radius: 16px; background: #fff; }
+.work-section h2, .results-heading h2 { margin: 0; color: #172840; font-size: 16px; }
+.work-section .search { padding: 12px 0 0; }
+.work-section .content { padding: 10px 0 0; }
+.work-section .list-filters { padding: 12px 0 0; }
+.results-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 2px 12px; }
+.results-heading span { color: #8290a5; font-size: 13px; }
 </style>

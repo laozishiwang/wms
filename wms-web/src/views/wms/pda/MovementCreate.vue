@@ -55,9 +55,9 @@ const save = async () => {
 <template>
   <section class="movement-create">
     <button class="back" @click="emit('close')">‹ 返回</button><h2>新建移库草稿</h2>
-    <p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select>
-    <div class="scan-panel"><p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
-    <div v-if="sku" class="detail-panel"><p>{{ sku.name }}（{{ sku.code }}）</p>
+    <div class="detail-panel"><p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select></div>
+    <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
+    <div v-if="sku" class="detail-panel"><p>移库信息 · {{ sku.name }}（{{ sku.code }}）</p>
       <p>批次</p><BatchSelect v-model="row.batchNo" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" @update:model-value="row.sourceLocationId = undefined; row.arrivalId = undefined" />
       <p>来源库位（留空为未分配）</p><BatchLocationSelect v-model="row.sourceLocationId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :batch-no="row.batchNo" @update:model-value="row.arrivalId = undefined" />
       <p>到货记录</p><ArrivalSelect v-model="row.arrivalId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :location-id="row.sourceLocationId" :batch-no="row.batchNo" />
@@ -65,7 +65,7 @@ const save = async () => {
       <p>数量</p><el-input-number v-model="row.quantity" :min="0.001" :precision="3" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
     </div><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
-    <article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }} · 数量：{{ item.quantity }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><el-button link @click="details.splice(index, 1)">删除</el-button></article>
+    <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }} · 数量：{{ item.quantity }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><el-button link @click="details.splice(index, 1)">删除</el-button></article>
     <p class="save-row"><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
   </section>
 </template>
