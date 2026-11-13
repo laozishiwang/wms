@@ -39,6 +39,7 @@ const logout = async () => {
 type Tab = 'receipt' | 'shipment' | 'movement' | 'check' | 'inventory'
 const tab = ref<Tab>('receipt')
 const scrollArea = ref<HTMLElement>()
+const scrollTrack = ref<HTMLElement>()
 const scrollIndicator = reactive({ visible: false, top: 0, height: 100 })
 const updateScrollIndicator = () => {
   const el = scrollArea.value
@@ -49,6 +50,36 @@ const updateScrollIndicator = () => {
   if (scrollIndicator.visible !== (max > 1) || Math.abs(scrollIndicator.top - top) > 0.1 || Math.abs(scrollIndicator.height - height) > 0.1) Object.assign(scrollIndicator, { visible: max > 1, top, height })
 }
 onUpdated(updateScrollIndicator)
+onMounted(() => {
+  const area = scrollArea.value!
+  const resize = new ResizeObserver(updateScrollIndicator)
+  const mutations = new MutationObserver(updateScrollIndicator)
+  resize.observe(area)
+  mutations.observe(area, { childList: true, subtree: true })
+  window.addEventListener('resize', updateScrollIndicator)
+  updateScrollIndicator()
+  onBeforeUnmount(() => {
+    resize.disconnect()
+    mutations.disconnect()
+    window.removeEventListener('resize', updateScrollIndicator)
+  })
+})
+const dragScroll = (event: PointerEvent) => {
+  const area = scrollArea.value!
+  const track = scrollTrack.value!
+  const bounds = track.getBoundingClientRect()
+  const thumbHeight = bounds.height * scrollIndicator.height / 100
+  const startY = event.clientY
+  const startScroll = area.scrollTop
+  const scrollRange = area.scrollHeight - area.clientHeight
+  const trackRange = bounds.height - thumbHeight
+  track.setPointerCapture(event.pointerId)
+  const move = (e: PointerEvent) => { area.scrollTop = startScroll + (e.clientY - startY) * scrollRange / trackRange }
+  const end = () => { track.removeEventListener('pointermove', move); track.removeEventListener('pointerup', end); track.removeEventListener('pointercancel', end) }
+  track.addEventListener('pointermove', move)
+  track.addEventListener('pointerup', end)
+  track.addEventListener('pointercancel', end)
+}
 const home = ref(true)
 const summary = ref<WmsHomeOrderSummaryVO[]>([])
 const canViewSummary = checkPermi(['wms:home:query'])
@@ -428,7 +459,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <label class="info-row"><span>往来单位</span><MerchantSelect v-model="receiptMerchantId" :supplier="tab === 'receipt'" :customer="tab === 'shipment'" /></label>
       <label class="info-row"><span>单据日期</span><input v-model="receiptDate" type="date" /></label>
       <label class="info-row"><span>备注</span><input v-model="receiptRemark" maxlength="255" placeholder="选填" /></label></div>
-      <div class="receipt-tools"><h3>物品明细</h3><p>选择库位后扫码添加物品，支持扫码枪输入。</p>
+      <div class="receipt-tools"><h3>物品明细</h3>
       <form class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描当前仓库的库位二维码" /><ScanButton @scan="(value) => { locationScan = value; scanLocation() }" /><button>选择库位</button></form>
       <p>当前库位：{{ selectedLocation?.name || '未分配' }} <button v-if="selectedLocation" class="back" @click="selectedLocation = undefined">清除</button></p>
       <div class="item-actions"><ScanButton variant="card" label="扫码添加" @scan="(value) => { receiptScan = value; scanReceiptSku() }" /><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button></div>
@@ -465,10 +496,10 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
     </template>
     <section v-else class="content"><ApprovalActions v-if="(approvalEnabled || selected.status === 1) && !dirty && tab !== 'inventory'" :before-submit="canSubmitApproval" :type="tab" :id="selected.id" :status="selected.status" @changed="selected = undefined; load()" /><button class="back" @click="backToList">‹ 返回列表</button><h2>{{ selected.no }}</h2><p>{{ tab === 'movement' ? `${selected.sourceWarehouseName} → ${selected.targetWarehouseName}` : selected.warehouseName }}</p><form v-if="tab === 'check' && selected.status === 0" class="search" @submit.prevent="scanCheck"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号，数量加 1" /><ScanButton @scan="(value) => { scanCode = value; scanCheck() }" /><button>扫码录入</button></form><p v-if="tab === 'check' && selected.status === 0">扫码会在当前实盘数量上累加。<button class="back" @click="resetCheck">实盘数量清零</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check' || tab === 'movement') && selected.status === 0" class="search" @submit.prevent="scanLocation"><input v-model="locationScan" placeholder="扫描库位二维码以核对对应明细" /><ScanButton @scan="(value) => { locationScan = value; scanLocation() }" /><button>选择库位</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'check' || tab === 'movement') && selectedLocation">核对库位：{{ selectedLocation.name }} <button class="back" @click="selectedLocation = undefined">清除</button></p><form v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0" class="search" @submit.prevent="scanOrder"><input v-model="scanCode" placeholder="扫描序列号或 SKU 编号" /><ScanButton @scan="(value) => { scanCode = value; scanOrder() }" /><button>扫码核对</button></form><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">核对数据仅在本次操作中保留</p><article v-for="item in visibleDetails" :key="item.id"><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p><p v-if="item.batchNo">批次：{{ item.batchNo }}</p><p v-if="tab !== 'receipt'">到货记录：{{ item.arrivalId === 0 ? '历史未分配' : item.arrivalId == null ? '未选择' : item.arrivalId }}</p><p v-if="item.locationId">库位 ID：{{ item.locationId }}</p><p v-if="tab === 'movement'">来源库位：{{ item.sourceLocationId || '未分配' }} → 目标库位：{{ item.targetLocationId || '未分配' }}</p><b>{{ tab === 'check' ? '账面数量' : '数量' }} {{ item.quantity }} {{ item.unit }}</b><p v-if="(tab === 'receipt' || tab === 'shipment' || tab === 'movement') && selected.status === 0">已核对 <el-input-number v-if="!item.serialNos?.length" v-model="verified[item.id]" :min="0" :max="Number(item.quantity)" :precision="QUANTITY_PRECISION" :controls="false" /><span v-else>{{ verified[item.id] || 0 }}</span> / {{ item.quantity }}</p><p v-if="tab === 'check' && selected.status === 0">实盘序列号 <SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></p><p v-if="tab === 'check'">实盘数量 <el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><span v-else>{{ item.checkQuantity }}</span></p></article><button v-if="tab === 'check' && selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="saveCheck">保存盘点数量</button><button v-if="selected.status === 0 && !approvalEnabled" v-hasPermi="[`wms:${tab}-order:complete`]" class="primary" @click="complete">确认完成{{ labels[tab] }}</button></section>
     </template>
-    <div v-if="scrollIndicator.visible" class="scroll-indicator" aria-hidden="true"><span :style="{ top: `${scrollIndicator.top}%`, height: `${scrollIndicator.height}%` }"></span></div>
     <nav class="bottom-nav" aria-label="移动端导航"><button :class="{ chosen: home }" @click="goHome"><Icon icon="ep:house" :size="22" />工作台</button><button :class="{ chosen: !home && tab === 'inventory' }" @click="openWork('inventory')"><Icon icon="ep:box" :size="22" />库存</button><button :class="{ chosen: !home && tab !== 'inventory' }" @click="openWork('receipt')"><Icon icon="ep:document" :size="22" />单据</button></nav>
     <button v-hasPermi="[`wms:${tab}-order:create`]" v-if="!home && !selected && !creatingReceipt && !creatingMovement && !creatingCheck && warehouseId && tab !== 'inventory'" class="floating-add" aria-label="新建单据" @click="tab === 'check' ? creatingCheck = true : tab === 'movement' ? creatingMovement = true : (selectedLocation = undefined, receiptRows = [], clearBatchInput(), receiptType = getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value, creatingReceipt = true)">＋</button>
   </main>
+  <Teleport to="body"><div v-if="scrollIndicator.visible" ref="scrollTrack" class="scroll-indicator" aria-label="页面滚动条" @pointerdown.prevent="dragScroll"><span :style="{ top: `${scrollIndicator.top}%`, height: `${scrollIndicator.height}%` }"></span></div></Teleport>
 </template>
 
 <style scoped>
@@ -528,6 +559,6 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .warehouse-choices button,.back { border:1px solid #dce7f8; background:#f7faff; color:#245eea; font-weight:600; }
 .pda::-webkit-scrollbar { width: 5px; }
 .pda::-webkit-scrollbar-thumb { background: #8ca5cc; border-radius: 8px; }
-.scroll-indicator { position: fixed; z-index: 8; top: 66px; bottom: calc(80px + env(safe-area-inset-bottom)); right: max(2px, calc((100vw - 640px) / 2 + 2px)); width: 4px; pointer-events: none; }
-.scroll-indicator span { position: absolute; left: 0; width: 100%; border-radius: 5px; background: rgba(83, 108, 146, .5); }
+.scroll-indicator { position: fixed; z-index: 100; top: 66px; bottom: calc(80px + env(safe-area-inset-bottom)); right: max(0px, calc((100vw - 640px) / 2)); width: 20px; touch-action: none; }
+.scroll-indicator span { position: absolute; right: 3px; width: 5px; border-radius: 5px; background: #8195b3; box-shadow: 0 0 0 1px rgba(255,255,255,.7); }
 </style>
