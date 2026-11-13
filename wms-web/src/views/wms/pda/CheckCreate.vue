@@ -56,9 +56,9 @@ const submit = async () => {
 }
 </script>
 <template>
-  <section class="check-create"><button class="back" @click="emit('close')">‹ 返回</button><h2>新建盘点草稿</h2><p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" />
-    <template v-if="sku && balances.length"><p>{{ sku.itemName }} {{ sku.name }}</p><p>选择账面库存（库位／批次／到货）</p><el-select v-model="selected" placeholder="请选择" @change="choose"><el-option v-for="(b, index) in balances" :key="index" :value="index" :label="`库位 ${b.locationId ?? '未分配'} · 批次 ${b.batchNo || '未分配'} · 到货 ${b.arrivalId ?? '历史未分配'} · ${b.quantity}`" /></el-select>
-    <template v-if="selected !== undefined"><p>账面数量：{{ balances[selected].quantity }}</p><p>实盘数量</p><el-input-number v-model="actual" :min="0" :precision="2" /><p>实盘序列号</p><SerialEditor v-model="actualSerials" /></template></template>
+  <section class="check-create"><button class="back" @click="emit('close')">‹ 返回</button><h2>新建盘点草稿</h2><div class="scan-panel"><p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
+    <div v-if="sku && balances.length" class="detail-panel"><p>{{ sku.itemName }} {{ sku.name }}</p><p>选择账面库存（库位／批次／到货）</p><el-select v-model="selected" placeholder="请选择" @change="choose"><el-option v-for="(b, index) in balances" :key="index" :value="index" :label="`库位 ${b.locationId ?? '未分配'} · 批次 ${b.batchNo || '未分配'} · 到货 ${b.arrivalId ?? '历史未分配'} · ${b.quantity}`" /></el-select>
+    <template v-if="selected !== undefined"><p>账面数量：{{ balances[selected].quantity }}</p><p>实盘数量</p><el-input-number v-model="actual" :min="0" :precision="2" /><p>实盘序列号</p><SerialEditor v-model="actualSerials" /></template></div>
     <p><el-button @click="save">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; serialRequestId++; serialReady = false">取消当前物品</el-button></p><article v-for="(item, index) in details" :key="index">{{ item.label }} · 账面 {{ item.quantity }} · 实盘 {{ item.checkQuantity }} <el-button link @click="details.splice(index, 1)">删除</el-button></article><p><el-button type="primary" :loading="loading" @click="submit">保存草稿</el-button></p></section>
 </template>
 <style scoped>
@@ -71,4 +71,10 @@ form { display:flex; gap:8px; margin-bottom: 10px; }
 :deep(.el-input__wrapper), :deep(.el-select__wrapper) { min-height: 46px; border-radius: 10px; }
 article { margin: 12px 0; padding: 16px; border-radius: 14px; background: white; box-shadow: 0 5px 20px #2137580a; }
 article p { font-weight: normal; }
+.scan-panel, .detail-panel { margin: 14px 0; padding: 18px; background: #fff; border: 1px solid #e9eef7; border-radius: 18px; box-shadow: 0 8px 24px rgba(30, 59, 100, .06); }
+.scan-panel p:first-child, .detail-panel p:first-child { margin-top: 0; color: #182b47; font-size: 16px; }
+.scan-panel form { margin-bottom: 8px; }
+.scan-panel :deep(.el-button), .detail-panel :deep(.el-button) { min-height: 44px; border-radius: 10px; }
+:deep(.el-button--primary) { min-height: 46px; border-radius: 11px; font-weight: 650; }
+article { border: 1px solid #e8eef8; color: #243854; line-height: 1.6; }
 </style>

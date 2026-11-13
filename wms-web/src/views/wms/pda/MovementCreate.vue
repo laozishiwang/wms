@@ -56,15 +56,15 @@ const save = async () => {
   <section class="movement-create">
     <button class="back" @click="emit('close')">‹ 返回</button><h2>新建移库草稿</h2>
     <p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select>
-    <p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" />
-    <template v-if="sku"><p>{{ sku.name }}（{{ sku.code }}）</p>
+    <div class="scan-panel"><p>扫描物品规格编号或条码</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
+    <div v-if="sku" class="detail-panel"><p>{{ sku.name }}（{{ sku.code }}）</p>
       <p>批次</p><BatchSelect v-model="row.batchNo" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" @update:model-value="row.sourceLocationId = undefined; row.arrivalId = undefined" />
       <p>来源库位（留空为未分配）</p><BatchLocationSelect v-model="row.sourceLocationId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :batch-no="row.batchNo" @update:model-value="row.arrivalId = undefined" />
       <p>到货记录</p><ArrivalSelect v-model="row.arrivalId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :location-id="row.sourceLocationId" :batch-no="row.batchNo" />
       <p>目标库位（留空为未分配）</p><InboundLocationSelect v-model="row.targetLocationId" :warehouse-id="target" />
       <p>数量</p><el-input-number v-model="row.quantity" :min="0.001" :precision="3" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
-    </template><p><el-button :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
+    </div><p><el-button :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
     <article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }} · 数量：{{ item.quantity }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><el-button link @click="details.splice(index, 1)">删除</el-button></article>
     <p><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
   </section>
@@ -79,4 +79,10 @@ form { display:flex; gap:8px; margin-bottom: 10px; }
 :deep(.el-input__wrapper), :deep(.el-select__wrapper) { min-height: 46px; border-radius: 10px; }
 article { margin: 12px 0; padding: 16px; border-radius: 14px; background: white; box-shadow: 0 5px 20px #2137580a; }
 article p { font-weight: normal; }
+.scan-panel, .detail-panel { margin: 14px 0; padding: 18px; background: #fff; border: 1px solid #e9eef7; border-radius: 18px; box-shadow: 0 8px 24px rgba(30, 59, 100, .06); }
+.scan-panel p:first-child, .detail-panel p:first-child { margin-top: 0; color: #182b47; font-size: 16px; }
+.scan-panel form { margin-bottom: 8px; }
+.scan-panel :deep(.el-button), .detail-panel :deep(.el-button) { min-height: 44px; border-radius: 10px; }
+:deep(.el-button--primary) { min-height: 46px; border-radius: 11px; font-weight: 650; }
+article { border: 1px solid #e8eef8; color: #243854; line-height: 1.6; }
 </style>
