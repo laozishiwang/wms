@@ -20,7 +20,16 @@ const row = reactive<any>({ quantity: 1, serialNos: [] })
 const loading = ref(false)
 watch(target, () => { row.targetLocationId = undefined })
 onMounted(async () => { warehouses.value = await WarehouseApi.getWarehouseSimpleList() })
-const find = async () => { const found: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } }); if (found.length !== 1) { ElMessage.warning('未找到唯一物品规格'); return }; sku.value = found[0]; Object.assign(row, { batchNo: undefined, sourceLocationId: undefined, targetLocationId: undefined, arrivalId: undefined, quantity: 1, serialNos: [] }) }
+let findRequestId = 0
+const find = async () => {
+  const requestId = ++findRequestId
+  sku.value = undefined
+  Object.assign(row, { batchNo: undefined, sourceLocationId: undefined, targetLocationId: undefined, arrivalId: undefined, quantity: 1, serialNos: [] })
+  const found: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } })
+  if (requestId !== findRequestId) return
+  if (found.length !== 1) { ElMessage.warning('未找到唯一物品规格'); return }
+  sku.value = found[0]
+}
 const save = async () => {
   if (!sku.value?.id || !target.value || row.arrivalId === undefined || !row.quantity || row.quantity <= 0) { ElMessage.warning('请选择物品、目标仓库和到货记录，并填写数量'); return }
   if (target.value === props.sourceWarehouseId && row.sourceLocationId === row.targetLocationId) { ElMessage.warning('同仓移库的来源和目标库位不能相同'); return }

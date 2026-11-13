@@ -15,11 +15,17 @@ const optionRequests: Record<string, number> = {}
 const loadOptions = async (field: string, term = '') => {
   const requestId = optionRequests[field] = (optionRequests[field] || 0) + 1
   const data = await request.get({ url: '/wms/order-detail-query/page', params: { ...query, direction: props.direction, startTime: dates.value?.[0], endTime: dates.value?.[1], optionField: field, optionSearch: term } })
-  if (optionRequests[field] === requestId) optionLists[field] = data.list
+  if (optionRequests[field] === requestId) {
+    const selected = optionLists[field]?.find((option) => option.value === query[field])
+    optionLists[field] = selected && !data.list.some((option: { value: string | number }) => option.value === selected.value)
+      ? [selected, ...data.list] : data.list
+  }
 }
 watch([query, dates], () => {
   for (const field of Object.keys(optionRequests)) optionRequests[field]++
-  for (const field of Object.keys(optionLists)) delete optionLists[field]
+  for (const field of Object.keys(optionLists)) {
+    optionLists[field] = optionLists[field].filter((option) => option.value === query[field])
+  }
 }, { deep: true })
 const fields = [{key:'warehouseId',label:'仓库'}, {key:'no',label:'单据号'}, {key:'itemName',label:'物品名称'}, {key:'skuCode',label:'规格编号'}, {key:'locationKeyword',label:'库位'}, {key:'batchNo',label:'批次号'}, {key:'palletNo',label:'托盘号'}, {key:'boxNo',label:'箱号'}, {key:'rollNo',label:'卷号'}]
 
