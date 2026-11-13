@@ -85,6 +85,8 @@ public class WmsMovementOrderDetailDO extends BaseDO {
 
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long sourceLocationId;
+    @com.baomidou.mybatisplus.annotation.TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
+    private Long arrivalId;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long targetLocationId;
 

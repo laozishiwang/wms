@@ -55,6 +55,7 @@ public class WmsInventoryChangeReqDTO {
         private BigDecimal quantity;
 
         private Long locationId;
+    private Long arrivalId;
         private List<String> serialNos;
         private String batchNo;
         private LocalDateTime productionDate;

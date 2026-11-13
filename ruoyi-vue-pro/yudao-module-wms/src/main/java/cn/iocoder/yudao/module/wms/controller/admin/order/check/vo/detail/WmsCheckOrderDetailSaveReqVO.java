@@ -26,6 +26,8 @@ public class WmsCheckOrderDetailSaveReqVO {
     private Long inventoryId;
 
     private Long locationId;
+    private Long arrivalId;
+    public void setArrivalId(Long value) { this.arrivalId = value != null && value == 0L ? null : value; }
     private String batchNo;
     private LocalDateTime productionDate;
     private LocalDateTime expirationDate;

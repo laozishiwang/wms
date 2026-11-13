@@ -1,5 +1,6 @@
 // WMS 移库单明细 VO
 export interface MovementOrderDetailVO {
+  arrivalId?: number | null
   id?: number
   orderId?: number
   itemId?: number

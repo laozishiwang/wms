@@ -77,6 +77,8 @@ public class WmsShipmentOrderDetailDO extends BaseDO {
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> serialNos;
     private Long locationId;
+    @com.baomidou.mybatisplus.annotation.TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
+    private Long arrivalId;
     /** 批次号；为空表示未分配批次。 */
     private String batchNo;
     /** 生产日期。 */

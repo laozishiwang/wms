@@ -58,6 +58,7 @@ public class WmsShipmentOrderDetailRespVO {
 
     /** 批次号；为空表示历史未分配库存。 */
     private Long locationId;
+    private Long arrivalId;
     private List<String> serialNos;
     private String batchNo;
     /** 生产日期。 */

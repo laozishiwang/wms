@@ -50,6 +50,7 @@ public class WmsCheckOrderDetailRespVO {
     private Long inventoryId;
 
     private Long locationId;
+    private Long arrivalId;
     private String batchNo;
     private LocalDateTime productionDate;
     private LocalDateTime expirationDate;

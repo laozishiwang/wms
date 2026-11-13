@@ -1,5 +1,6 @@
 // WMS 出库单明细 VO
 export interface ShipmentOrderDetailVO {
+  arrivalId?: number | null
   id?: number
   orderId?: number
   itemId?: number

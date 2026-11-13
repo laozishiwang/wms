@@ -242,6 +242,7 @@ public class WmsReceiptOrderServiceImpl implements WmsReceiptOrderService {
     private void createInventory(WmsReceiptOrderDO order, List<WmsReceiptOrderDetailDO> details) {
         List<WmsInventoryChangeReqDTO.Item> items = convertList(details,
                 detail -> BeanUtils.toBean(detail, WmsInventoryChangeReqDTO.Item.class)
+                        .setArrivalId(detail.getId())
                         .setTotalPrice(getDetailTotalPrice(detail.getQuantity(), detail.getPrice(),
                                 detail.getTotalPrice())));
         inventoryService.changeInventory(new WmsInventoryChangeReqDTO()

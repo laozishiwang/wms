@@ -112,12 +112,12 @@
         <el-table-column v-if="column === 'serial'" label="序列号" width="130"><template #default="scope"><SerialEditor v-model="scope.row.serialNos" /></template></el-table-column>
         <el-table-column v-if="column === 'location'" label="出库库位" min-width="200">
           <template #default="scope">
-            <BatchLocationSelect v-model="scope.row.locationId" :warehouse-id="formData.warehouseId" :sku-id="scope.row.skuId" :batch-no="scope.row.batchNo" />
+            <BatchLocationSelect v-model="scope.row.locationId" :warehouse-id="formData.warehouseId" :sku-id="scope.row.skuId" :batch-no="scope.row.batchNo" @update:model-value="scope.row.arrivalId = undefined" />
           </template>
         </el-table-column>
         <el-table-column v-if="column === 'batch'" label="批次号" min-width="160">
           <template #default="scope">
-            <BatchSelect v-model="scope.row.batchNo" :warehouse-id="formData.warehouseId" :sku-id="scope.row.skuId" @change="scope.row.locationId = undefined" />
+            <BatchSelect v-model="scope.row.batchNo" :warehouse-id="formData.warehouseId" :sku-id="scope.row.skuId" @change="scope.row.locationId = undefined; scope.row.arrivalId = undefined" />
           </template>
         </el-table-column>
         <el-table-column v-if="column === 'available'" align="right" label="可用库存" width="120">
@@ -125,6 +125,7 @@
             {{ formatQuantity(scope.row.availableQuantity) || '-' }}
           </template>
         </el-table-column>
+        <el-table-column v-if="column === 'arrival'" label="到货记录" min-width="230"><template #default="{ row }"><ArrivalSelect v-model="row.arrivalId" :warehouse-id="formData.warehouseId" :sku-id="row.skuId" :location-id="row.locationId" :batch-no="row.batchNo" /></template></el-table-column>
         <el-table-column v-if="column === 'quantity'" label="出库数量" prop="quantity" width="160">
           <template #default="scope">
             <el-input-number
@@ -221,6 +222,8 @@
 import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
+import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
+import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
 import ReceiptColumnSettings from '@/views/wms/order/receipt/ReceiptColumnSettings.vue'
 import ShipmentImport from './ShipmentImport.vue'
 import { getCurrentUserId, getTenantId } from '@/utils/auth'
@@ -282,7 +285,7 @@ const columnSettingsRef = ref<InstanceType<typeof ReceiptColumnSettings>>()
 const columnOptions = [
   { key: 'sku', label: '规格信息' }, { key: 'serial', label: '序列号' },
   { key: 'location', label: '出库库位' }, { key: 'batch', label: '批次号' },
-  { key: 'available', label: '可用库存' }, { key: 'quantity', label: '出库数量' },
+  { key: 'arrival', label: '到货记录' }, { key: 'available', label: '可用库存' }, { key: 'quantity', label: '出库数量' },
   { key: 'price', label: '单价' }, { key: 'total', label: '金额' }
 ]
 const columnOrder = ref(columnOptions.map((item) => item.key))
@@ -357,6 +360,7 @@ function buildDetail(inventory: InventorySelectRow): ShipmentOrderDetailVO {
 function normalizeDetails(details: ShipmentOrderDetailVO[]) {
   return details.map((detail) => ({
     ...detail,
+    arrivalId: detail.id && (detail as typeof detail & { arrivalId?: number | null }).arrivalId == null ? 0 : (detail as typeof detail & { arrivalId?: number | null }).arrivalId,
     totalPrice: detail.totalPrice ?? multiplyPrice(detail.quantity, detail.price)
   }))
 }
@@ -402,7 +406,7 @@ const getSelectedInventoryKeys = () => {
 
 /** 删除明细 */
 const copyDetail = (detail: ShipmentOrderDetailVO) => {
-  formData.value.details?.push({ ...detail, id: undefined, orderId: undefined, batchNo: undefined, locationId: undefined, serialNos: [] })
+  formData.value.details?.push({ ...detail, id: undefined, orderId: undefined, batchNo: undefined, locationId: undefined, arrivalId: undefined, serialNos: [] })
 }
 
 const handleDeleteDetail = (index: number) => {
@@ -460,6 +464,10 @@ const validateDetails = (required: boolean) => {
   }
   for (let i = 0; i < formData.value.details.length; i++) {
     const detail = formData.value.details[i]
+    if ((detail as typeof detail & { arrivalId?: number }).arrivalId === undefined) {
+      message.error(`第 ${i + 1} 行请选择到货记录或历史未分配`)
+      return false
+    }
     if (!detail.skuId) {
       message.error(`第 ${i + 1} 行明细请选择物品规格`)
       return false
@@ -474,6 +482,12 @@ const validateDetails = (required: boolean) => {
     }
   }
   return true
+}
+
+
+const verifyArrivalBalances = async () => {
+  try { await validateArrivalBalances(formData.value.warehouseId!, formData.value.details || [], false); return true }
+  catch (error) { message.error(error instanceof Error ? error.message : '到货库存查询失败'); return false }
 }
 
 /** 构建提交数据 */
@@ -495,7 +509,7 @@ const emit = defineEmits(['success']) // 定义 success 事件，用于操作成
 const submitForm = async () => {
   // 校验表单
   await formRef.value.validate()
-  if (!validateDetails(false)) {
+  if (!validateDetails(false) || !(await verifyArrivalBalances())) {
     return
   }
   // 提交请求
@@ -520,7 +534,7 @@ const submitForm = async () => {
 /** 完成出库：表单修改过则先保存，再完成 */
 const handleComplete = async () => {
   await formRef.value.validate()
-  if (!validateDetails(true)) {
+  if (!validateDetails(true) || !(await verifyArrivalBalances())) {
     return
   }
   try {

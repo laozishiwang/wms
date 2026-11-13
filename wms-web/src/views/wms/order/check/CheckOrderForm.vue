@@ -114,6 +114,7 @@
           </template>
         </el-table-column>
         <el-table-column label="库位" min-width="120"><template #default="{ row }">{{ row.locationId ? `库位 ${row.locationId}` : '未分配库位' }}</template></el-table-column>
+        <el-table-column label="到货记录" min-width="220"><template #default="{ row }"><ArrivalSelect v-if="row.arrivalId == null" v-model="row.arrivalId" :warehouse-id="row.warehouseId" :sku-id="row.skuId" :location-id="row.locationId" :batch-no="row.batchNo" :allow-zero-unassigned="Number(row.quantity) === 0" /><span v-else>{{ row.arrivalId === 0 ? '历史未分配' : `到货 #${row.arrivalId}` }}</span></template></el-table-column>
         <el-table-column label="批次号" min-width="150">
           <template #default="{ row }">{{ row.batchNo || '未分配批次' }}</template>
         </el-table-column>
@@ -231,7 +232,9 @@ import { h } from 'vue'
 import { CheckOrderApi, CheckOrderVO } from '@/api/wms/order/check'
 import { CheckOrderDetailVO } from '@/api/wms/order/check/detail'
 import { InventoryApi, InventoryVO } from '@/api/wms/inventory'
-import { getBatchInventoryList, listStockSerialNos } from '@/api/wms/inventory/batch'
+import { getBatchInventoryList } from '@/api/wms/inventory/batch'
+import { listArrivalBalances, listArrivalSerials, validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
+import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import { ItemSkuVO } from '@/api/wms/md/item/sku'
 import { WarehouseVO } from '@/api/wms/md/warehouse'
@@ -267,7 +270,7 @@ const formType = ref('')
 const originalFormData = ref('')
 const warehouseDialogVisible = ref(false)
 
-type CheckOrderFormDetail = CheckOrderDetailVO & { actualPrice?: number }
+type CheckOrderFormDetail = CheckOrderDetailVO & { actualPrice?: number; arrivalId?: number | null }
 type CheckOrderFormData = Omit<CheckOrderVO, 'details'> & { details?: CheckOrderFormDetail[] }
 type CheckInventoryRow = InventoryVO & { price?: number; availableQuantity?: number }
 
@@ -417,17 +420,17 @@ function buildDetail(inventory: CheckInventoryRow): CheckOrderFormDetail {
 async function buildInventoryDetails(inventory: InventoryVO): Promise<CheckOrderFormDetail[]> {
   if (!inventory.warehouseId || !inventory.skuId) return [buildDetail(inventory)]
   const batches = await getBatchInventoryList(inventory.warehouseId, inventory.skuId)
-  const rows: { locationId: number | null; batchNo: string | null; quantity: number }[] = await request.get({ url: '/wms/storage-place/dimensions', params: { warehouseId: inventory.warehouseId, skuId: inventory.skuId } })
+  const rows = await listArrivalBalances(inventory.warehouseId, inventory.skuId)
   const total = Number(inventory.quantity || 0)
   const sum = rows.reduce((value, row) => value + Number(row.quantity), 0)
   if (Math.round((total - sum) * 100) !== 0) throw new Error('交叉库存与汇总库存不一致，请先核对库存')
   const result: CheckOrderFormDetail[] = rows.map((row) => {
     const batch = batches.find((item) => item.batchNo === row.batchNo)
-    return { ...buildDetail({ ...inventory, availableQuantity: row.quantity }), locationId: row.locationId || undefined, batchNo: row.batchNo || undefined, productionDate: batch?.productionDate, expirationDate: batch?.expirationDate }
+    return { ...buildDetail({ ...inventory, availableQuantity: row.quantity }), locationId: row.locationId || undefined, batchNo: row.batchNo || undefined, arrivalId: row.arrivalId ?? 0, productionDate: batch?.productionDate, expirationDate: batch?.expirationDate }
   })
   if (!result.length) result.push(buildDetail({ ...inventory, availableQuantity: 0 }))
   for (const row of result) {
-    const serials = await listStockSerialNos(inventory.warehouseId, inventory.skuId, row.batchNo, row.locationId)
+    const serials = await listArrivalSerials(inventory.warehouseId, inventory.skuId, row.locationId ?? null, row.batchNo ?? null, row.arrivalId ?? 0)
     row.bookSerialNos = serials
     row.actualSerialNos = [...serials]
   }
@@ -444,6 +447,7 @@ const setSerials = (row: CheckOrderFormDetail, serials: string[]) => {
 function normalizeDetails(details: CheckOrderDetailVO[]) {
   return details.map((detail) => ({
     ...detail,
+    arrivalId: detail.id && (detail as typeof detail & { arrivalId?: number | null }).arrivalId == null ? 0 : (detail as typeof detail & { arrivalId?: number | null }).arrivalId,
     actualPrice: multiplyPrice(detail.checkQuantity, detail.price)
   }))
 }
@@ -532,6 +536,7 @@ function buildZeroInventoryDetail(sku: ItemSkuVO): CheckOrderFormDetail {
     skuCode: sku.code,
     skuName: sku.name,
     inventoryId: undefined,
+    arrivalId: undefined,
     warehouseId: formData.value.warehouseId,
     warehouseName: formData.value.warehouseName,
     quantity: 0,
@@ -600,6 +605,10 @@ const validateDetails = (required: boolean) => {
   }
   for (let i = 0; i < formData.value.details.length; i++) {
     const detail = formData.value.details[i]
+    if (detail.arrivalId === undefined || detail.arrivalId === null) {
+      message.error(`第 ${i + 1} 行缺少到货记录`)
+      return false
+    }
     if (detail.checkQuantity === undefined || detail.checkQuantity < 0) {
       message.error(`第 ${i + 1} 行明细实盘数量不能小于 0`)
       return false
@@ -610,6 +619,12 @@ const validateDetails = (required: boolean) => {
     }
   }
   return true
+}
+
+
+const verifyArrivalBalances = async () => {
+  try { await validateArrivalBalances(formData.value.warehouseId!, formData.value.details || [], true); return true }
+  catch (error) { message.error(error instanceof Error ? error.message : '到货库存查询失败'); return false }
 }
 
 /** 构建提交数据 */
@@ -632,7 +647,7 @@ const buildSubmitData = () => {
 const emit = defineEmits(['success'])
 const submitForm = async () => {
   await formRef.value.validate()
-  if (!validateDetails(false)) {
+  if (!validateDetails(false) || !(await verifyArrivalBalances())) {
     return
   }
   formLoading.value = true
@@ -655,7 +670,7 @@ const submitForm = async () => {
 /** 完成盘库：表单修改过则先保存，再完成 */
 const handleComplete = async () => {
   await formRef.value.validate()
-  if (!validateDetails(true)) {
+  if (!validateDetails(true) || !(await verifyArrivalBalances())) {
     return
   }
   try {

@@ -150,6 +150,9 @@
           <el-button link type="primary" @click="showLocations(scope.row)">查看库位</el-button>
         </template>
       </el-table-column>
+      <el-table-column label="到货库存" width="110">
+        <template #default="scope"><el-button link type="primary" @click="showArrivals(scope.row)">查看到货</el-button></template>
+      </el-table-column>
       <el-table-column label="序列号" width="110">
         <template #default="scope">
           <el-button link type="primary" @click="openSerial(scope.row)">查询序列号</el-button>
@@ -164,6 +167,17 @@
       @pagination="getList"
     />
   </ContentWrap>
+  <Dialog v-model="arrivalVisible" title="到货库存" width="900px">
+    <p>出库导入时使用到货记录 ID；历史未分配填写 0。可选中 ID 后复制。</p>
+    <el-table v-loading="arrivalLoading" :data="arrivalRows" empty-text="暂无到货库存">
+      <el-table-column label="到货记录 ID" min-width="160"><template #default="{ row }"><el-input :model-value="String(row.arrivalId ?? 0)" readonly /></template></el-table-column>
+      <el-table-column label="库位编号" min-width="130"><template #default="{ row }">{{ arrivalLocations.find((item) => item.id === row.locationId)?.code || (row.locationId ? `库位 #${row.locationId}` : '未分配') }}</template></el-table-column>
+      <el-table-column prop="batchNo" label="批次号" min-width="120" />
+      <el-table-column label="托盘 / 箱 / 卷号" min-width="190"><template #default="{ row }">{{ row.palletNo || '-' }} / {{ row.boxNo || '-' }} / {{ row.rollNo || '-' }}</template></el-table-column>
+      <el-table-column label="净长 / 毛长(cm)" min-width="150"><template #default="{ row }">{{ row.netLength ?? '-' }} / {{ row.grossLength ?? '-' }}</template></el-table-column>
+      <el-table-column prop="quantity" label="可用数量" width="100" />
+    </el-table>
+  </Dialog>
   <Dialog v-model="locationVisible" title="库位库存" width="650px">
     <el-table v-loading="locationLoading" :data="locations" empty-text="暂无库位库存">
       <el-table-column prop="shelfName" label="所属货架" min-width="150" />
@@ -238,6 +252,8 @@ import WarehouseSelect from '@/views/wms/md/warehouse/components/WarehouseSelect
 import { formatQuantity } from '@/views/wms/utils/format'
 import { getBatchInventoryList, getExpiryInventoryPage, findSerialInventory, type BatchInventoryVO, type ExpiryInventoryVO, type SerialInventoryVO } from '@/api/wms/inventory/batch'
 import { formatDate } from '@/utils/formatTime'
+import { listArrivalBalances, type ArrivalBalance } from '@/views/wms/inventory/components/arrival-api'
+import { checkPermi } from '@/utils/permission'
 
 /** WMS 库存统计 */
 defineOptions({ name: 'WmsInventory' })
@@ -267,6 +283,21 @@ interface SpanMethodProps {
 }
 
 const loading = ref(true) // 列表的加载中
+const arrivalVisible = ref(false)
+const arrivalLoading = ref(false)
+const arrivalRows = ref<ArrivalBalance[]>([])
+const arrivalLocations = ref<Array<{ id: number; code: string }>>([])
+const showArrivals = async (row: InventoryRow) => {
+  if (!row.warehouseId || !row.skuId) return
+  arrivalVisible.value = true; arrivalLoading.value = true; arrivalRows.value = []; arrivalLocations.value = []
+  try {
+    const [balances, places] = await Promise.all([
+      listArrivalBalances(row.warehouseId, row.skuId),
+      checkPermi(['wms:warehouse:query']) ? request.get({ url: '/wms/storage-place/list', params: { warehouseId: row.warehouseId } }) : Promise.resolve([])
+    ])
+    arrivalRows.value = balances; arrivalLocations.value = places
+  } finally { arrivalLoading.value = false }
+}
 const list = ref<InventoryRow[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const filterZero = ref(false) // 是否过滤库存为 0 的商品

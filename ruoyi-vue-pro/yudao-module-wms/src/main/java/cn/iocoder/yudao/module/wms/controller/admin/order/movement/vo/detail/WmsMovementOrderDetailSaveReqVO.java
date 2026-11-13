@@ -34,6 +34,8 @@ public class WmsMovementOrderDetailSaveReqVO {
     private BigDecimal totalPrice;
 
     private Long sourceLocationId;
+    private Long arrivalId;
+    public void setArrivalId(Long value) { this.arrivalId = value != null && value == 0L ? null : value; }
     private Long targetLocationId;
 
     private String batchNo;

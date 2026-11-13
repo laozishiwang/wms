@@ -19,8 +19,9 @@ public class WmsSerialInventoryController {
     @PreAuthorize("@ss.hasPermission('wms:inventory:query')")
     public CommonResult<List<String>> list(@RequestParam Long warehouseId, @RequestParam Long skuId,
                                             @RequestParam(required = false) String batchNo,
-                                            @RequestParam(required = false) Long locationId) {
-        return success(service.listInStockAtLocation(warehouseId, skuId, locationId, batchNo));
+                                            @RequestParam(required = false) Long locationId,
+                                            @RequestParam Long arrivalId) {
+        return success(service.listInStockAtArrival(warehouseId, skuId, locationId, batchNo, arrivalId == 0 ? null : arrivalId));
     }
     @GetMapping("/find")
     @PreAuthorize("@ss.hasPermission('wms:inventory:query')")

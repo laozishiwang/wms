@@ -60,6 +60,7 @@ public class WmsMovementOrderDetailRespVO {
     private BigDecimal totalPrice;
 
     private Long sourceLocationId;
+    private Long arrivalId;
     private Long targetLocationId;
 
     private String batchNo;

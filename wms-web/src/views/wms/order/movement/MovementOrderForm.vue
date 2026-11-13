@@ -88,7 +88,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="来源库位" min-width="200"><template #default="{ row }"><BatchLocationSelect v-model="row.sourceLocationId" :warehouse-id="formData.sourceWarehouseId" :sku-id="row.skuId" :batch-no="row.batchNo" /></template></el-table-column>
+        <el-table-column label="来源库位" min-width="200"><template #default="{ row }"><BatchLocationSelect v-model="row.sourceLocationId" :warehouse-id="formData.sourceWarehouseId" :sku-id="row.skuId" :batch-no="row.batchNo" @update:model-value="row.arrivalId = undefined" /></template></el-table-column>
+        <el-table-column label="到货记录" min-width="230"><template #default="{ row }"><ArrivalSelect v-model="row.arrivalId" :warehouse-id="formData.sourceWarehouseId" :sku-id="row.skuId" :location-id="row.sourceLocationId" :batch-no="row.batchNo" /></template></el-table-column>
         <el-table-column label="目标库位" min-width="200"><template #default="{ row }"><InboundLocationSelect v-model="row.targetLocationId" :warehouse-id="formData.targetWarehouseId" /></template></el-table-column>
         <el-table-column label="序列号" width="130"><template #default="{ row }"><SerialEditor v-model="row.serialNos" /></template></el-table-column>
         <el-table-column label="批次号" min-width="160">
@@ -194,6 +195,8 @@ import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import { FormRules } from 'element-plus'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
+import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
+import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
 import { MovementOrderApi, MovementOrderVO } from '@/api/wms/order/movement'
 import { MovementOrderDetailVO } from '@/api/wms/order/movement/detail'
 import InventorySelect, {
@@ -305,6 +308,7 @@ function buildDetail(inventory: InventorySelectRow): MovementOrderDetailVO {
 function normalizeDetails(details: MovementOrderDetailVO[]) {
   return details.map((detail) => ({
     ...detail,
+    arrivalId: detail.id && (detail as typeof detail & { arrivalId?: number | null }).arrivalId == null ? 0 : (detail as typeof detail & { arrivalId?: number | null }).arrivalId,
     totalPrice: detail.totalPrice ?? multiplyPrice(detail.quantity, detail.price)
   }))
 }
@@ -350,11 +354,12 @@ function getSelectedInventoryKeys() {
 }
 
 const copyDetail = (detail: MovementOrderDetailVO) => {
-  formData.value.details?.push({ ...detail, id: undefined, orderId: undefined, batchNo: undefined, productionDate: undefined, expirationDate: undefined, serialNos: [] })
+  formData.value.details?.push({ ...detail, id: undefined, orderId: undefined, batchNo: undefined, arrivalId: undefined, productionDate: undefined, expirationDate: undefined, serialNos: [] })
 }
 
 const setBatchDates = (detail: MovementOrderDetailVO, batch?: BatchInventoryVO) => {
   detail.sourceLocationId = undefined
+  detail.arrivalId = undefined
   detail.productionDate = batch?.productionDate
   detail.expirationDate = batch?.expirationDate
 }
@@ -424,6 +429,10 @@ const validateDetails = (required: boolean) => {
   }
   for (let i = 0; i < formData.value.details.length; i++) {
     const detail = formData.value.details[i]
+    if ((detail as typeof detail & { arrivalId?: number }).arrivalId === undefined) {
+      message.error(`第 ${i + 1} 行请选择到货记录或历史未分配`)
+      return false
+    }
     if (!detail.quantity || detail.quantity <= 0) {
       message.error(`第 ${i + 1} 行明细移库数量必须大于 0`)
       return false
@@ -434,6 +443,12 @@ const validateDetails = (required: boolean) => {
     }
   }
   return true
+}
+
+
+const verifyArrivalBalances = async () => {
+  try { await validateArrivalBalances(formData.value.sourceWarehouseId!, (formData.value.details || []).map((row) => ({ ...row, locationId: row.sourceLocationId })), false); return true }
+  catch (error) { message.error(error instanceof Error ? error.message : '到货库存查询失败'); return false }
 }
 
 /** 构建提交数据 */
@@ -453,7 +468,7 @@ const buildSubmitData = () => {
 const emit = defineEmits(['success'])
 const submitForm = async () => {
   await formRef.value.validate()
-  if (!validateDetails(false)) {
+  if (!validateDetails(false) || !(await verifyArrivalBalances())) {
     return
   }
   formLoading.value = true
@@ -476,7 +491,7 @@ const submitForm = async () => {
 /** 完成移库：表单修改过则先保存，再完成 */
 const handleComplete = async () => {
   await formRef.value.validate()
-  if (!validateDetails(true)) {
+  if (!validateDetails(true) || !(await verifyArrivalBalances())) {
     return
   }
   try {

@@ -36,6 +36,8 @@ public class WmsShipmentOrderDetailSaveReqVO {
 
     /** 库位编号。 */
     private Long locationId;
+    private Long arrivalId;
+    public void setArrivalId(Long value) { this.arrivalId = value != null && value == 0L ? null : value; }
     /** 序列号列表。 */
     private List<String> serialNos;
     /** 批次号；为空表示历史未分配库存。 */

@@ -56,6 +56,8 @@ public class WmsInventoryServiceImpl implements WmsInventoryService {
     private WmsDimensionInventoryService dimensionInventoryService;
     @Resource
     private WmsSerialInventoryService serialInventoryService;
+    @Resource
+    private WmsArrivalInventoryService arrivalInventoryService;
 
     @Resource
     private WmsInventoryHistoryService inventoryHistoryService;
@@ -94,14 +96,14 @@ public class WmsInventoryServiceImpl implements WmsInventoryService {
 
         // 1. 逐条复核账面库存，并计算库存调整和库存流水
         record InventoryKey(Long warehouseId, Long skuId) {}
-        record CheckKey(InventoryKey inventory, String batchNo, Long locationId) {}
+        record CheckKey(InventoryKey inventory, String batchNo, Long locationId, Long arrivalId) {}
         Map<InventoryKey, WmsInventoryDO> inventoryByKey = new java.util.LinkedHashMap<>();
         java.util.Set<CheckKey> seen = new java.util.HashSet<>();
         List<WmsInventoryHistoryDO> histories = new ArrayList<>(reqDTO.getItems().size());
         for (WmsInventoryCheckReqDTO.Item item : reqDTO.getItems()) {
             InventoryKey key = new InventoryKey(item.getWarehouseId(), item.getSkuId());
             String batchNo = item.getBatchNo() == null || item.getBatchNo().isBlank() ? null : item.getBatchNo();
-            if (!seen.add(new CheckKey(key, batchNo, item.getLocationId()))) {
+            if (!seen.add(new CheckKey(key, batchNo, item.getLocationId(), item.getArrivalId()))) {
                 throw exception(CHECK_ORDER_INVENTORY_CHANGED);
             }
             WmsInventoryDO inventory = inventoryByKey.get(key);
@@ -119,7 +121,7 @@ public class WmsInventoryServiceImpl implements WmsInventoryService {
             }
             serialInventoryService.checkSerials(item);
             BigDecimal beforeQuantity = inventory.getQuantity();
-            if (dimensionInventoryService.lockQuantity(item.getWarehouseId(), item.getSkuId(), item.getLocationId(), batchNo).compareTo(item.getQuantity()) != 0) throw exception(CHECK_ORDER_INVENTORY_CHANGED);
+            if (arrivalInventoryService.lockQuantity(item.getWarehouseId(), item.getSkuId(), item.getLocationId(), batchNo, item.getArrivalId()).compareTo(item.getQuantity()) != 0) throw exception(CHECK_ORDER_INVENTORY_CHANGED);
             BigDecimal afterQuantity = beforeQuantity.add(item.getCheckQuantity().subtract(item.getQuantity()));
             if (beforeQuantity.compareTo(afterQuantity) == 0) {
                 continue;
@@ -130,6 +132,7 @@ public class WmsInventoryServiceImpl implements WmsInventoryService {
             }
             if (batchNo != null) batchInventoryService.adjustBatch(item.getWarehouseId(), item.getSkuId(), batchNo, delta);
             dimensionInventoryService.change(item.getWarehouseId(), item.getSkuId(), item.getLocationId(), batchNo, delta);
+            arrivalInventoryService.change(item.getWarehouseId(), item.getSkuId(), item.getLocationId(), batchNo, item.getArrivalId(), delta);
             inventory.setQuantity(afterQuantity);
             histories.add(buildInventoryHistory(reqDTO, item, beforeQuantity, afterQuantity));
         }
@@ -196,6 +199,11 @@ public class WmsInventoryServiceImpl implements WmsInventoryService {
             serialInventoryService.apply(reqDTO.getOrderType(), item, beforeQuantity);
             batchInventoryService.apply(reqDTO.getOrderType(), item, beforeQuantity);
             dimensionInventoryService.change(item.getWarehouseId(), item.getSkuId(), item.getLocationId(), item.getBatchNo(), item.getQuantity());
+            // Prototype: only receipt/shipment are connected. Do not deploy until movement and check are connected.
+            if (java.util.Objects.equals(reqDTO.getOrderType(), 1) || java.util.Objects.equals(reqDTO.getOrderType(), 2) || java.util.Objects.equals(reqDTO.getOrderType(), 3)) {
+                arrivalInventoryService.change(item.getWarehouseId(), item.getSkuId(), item.getLocationId(), item.getBatchNo(), item.getArrivalId(), item.getQuantity());
+            }
+
             inventory.setQuantity(afterQuantity);
             resultMap.put(item, new Tuple(beforeQuantity, afterQuantity));
         }

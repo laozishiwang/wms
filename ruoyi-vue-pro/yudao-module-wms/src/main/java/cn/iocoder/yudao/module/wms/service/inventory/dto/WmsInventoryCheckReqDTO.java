@@ -56,6 +56,7 @@ public class WmsInventoryCheckReqDTO {
         private Long warehouseId;
 
         private Long locationId;
+    private Long arrivalId;
         private String batchNo;
         /**
          * 账面数量
