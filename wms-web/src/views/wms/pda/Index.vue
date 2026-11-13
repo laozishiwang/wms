@@ -485,10 +485,17 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
     <CheckCreate v-else-if="creatingCheck && warehouseId" :warehouse-id="warehouseId" @close="cancelCheck" @saved="creatingCheck = false; load()" />
     <MovementCreate v-else-if="creatingMovement && warehouseId" :source-warehouse-id="warehouseId" @close="cancelMovement" @saved="creatingMovement = false; load()" />
     <template v-else-if="!selected">
-      <section class="work-section warehouse-section"><div class="section-heading"><h2>仓库</h2><button v-if="tab !== 'inventory'" v-hasPermi="[`wms:${tab}-order:create`]" class="create-order" :disabled="!warehouseId" @click="tab === 'check' ? creatingCheck = true : tab === 'movement' ? creatingMovement = true : (selectedLocation = undefined, receiptRows = [], clearBatchInput(), receiptType = getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value, creatingReceipt = true)">＋ 新建{{ labels[tab] }}单</button></div>
-      <form class="search" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="扫描仓库二维码或输入仓库编号" /><ScanButton @scan="(value) => { warehouseCode = value; selectWarehouse() }" /><button>选择仓库</button></form>
-      <div class="content"><button class="back" @click="chooseWarehouse">从列表选择仓库</button><div v-if="showWarehouseChoices" class="warehouse-choices"><button v-for="warehouse in warehouseChoices" :key="warehouse.id" @click="applyWarehouse(warehouse)">{{ warehouse.name }}（{{ warehouse.code }}）</button><span v-if="!warehouseChoices.length">暂无仓库</span></div></div>
-      <div v-if="warehouseId" class="content">当前仓库：{{ warehouseName }} <button class="back" @click="clearWarehouse">清除</button></div>
+      <section class="work-section warehouse-section"><div class="section-heading"><h2>仓库</h2></div>
+      <template v-if="!warehouseId">
+        <ScanButton class="warehouse-scan" label="扫码选择仓库" @scan="(value) => { warehouseCode = value; selectWarehouse() }" />
+        <form class="search warehouse-input" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="输入仓库编号" /><button type="submit">选择仓库</button></form>
+        <button class="warehouse-list-button" type="button" @click="showWarehouseChoices ? showWarehouseChoices = false : chooseWarehouse()">{{ showWarehouseChoices ? '收起仓库列表' : '从列表选择仓库' }} <span>{{ showWarehouseChoices ? '⌃' : '›' }}</span></button>
+        <div v-if="showWarehouseChoices" class="warehouse-choices"><button v-for="warehouse in warehouseChoices" :key="warehouse.id" @click="applyWarehouse(warehouse)">{{ warehouse.name }}（{{ warehouse.code }}）</button><span v-if="!warehouseChoices.length">暂无仓库</span></div>
+      </template>
+      <template v-else>
+        <div class="warehouse-current"><div><span>当前仓库</span><strong>{{ warehouseName }}</strong></div><button type="button" @click="clearWarehouse">更换</button></div>
+        <button v-if="tab !== 'inventory'" v-hasPermi="[`wms:${tab}-order:create`]" class="create-order" @click="tab === 'check' ? creatingCheck = true : tab === 'movement' ? creatingMovement = true : (selectedLocation = undefined, receiptRows = [], clearBatchInput(), receiptType = getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value, creatingReceipt = true)">＋ 新建{{ labels[tab] }}单</button>
+      </template>
       </section>
       <section class="work-section list-section"><div class="section-heading"><h2>{{ tab === 'inventory' ? '库存列表' : '单据列表' }}</h2><span>共 {{ total }} 条</span></div>
       <div v-if="tab !== 'inventory'" class="list-filters"><el-select v-model="listStatus" clearable placeholder="单据状态" @change="search"><el-option v-for="option in getIntDictOptions(DICT_TYPE.WMS_ORDER_STATUS)" :key="option.value" :label="option.label" :value="option.value" /></el-select><el-date-picker v-model="listDates" type="daterange" value-format="YYYY-MM-DD HH:mm:ss" :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]" start-placeholder="开始日期" end-placeholder="结束日期" @change="search" /></div>
@@ -578,8 +585,16 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .results-heading span { color: #8290a5; font-size: 13px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .section-heading span { color: #8290a5; font-size: 13px; }
-.create-order { min-height: 38px; padding: 0 12px; border-radius: 10px; background: #245eea; color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; }
-.create-order:disabled { background: #e9eef6; color: #9aa9bb; cursor: not-allowed; }
+.warehouse-section :deep(.warehouse-scan) { width: 100%; min-height: 50px; margin-top: 16px; background: #edf4ff; border-color: #dce9ff; }
+.warehouse-section .warehouse-input { padding-top: 10px; }
+.warehouse-input input { width: 0; }
+.warehouse-input button { padding: 10px 16px !important; white-space: nowrap; }
+.warehouse-list-button { display: flex; width: 100%; min-height: 45px; align-items: center; justify-content: space-between; margin-top: 10px; padding: 0 14px; border: 1px solid #e2e9f3; border-radius: 10px; background: #fff; color: #456487; text-align: left; }
+.warehouse-list-button span { color: #8ea1b9; font-size: 20px; }
+.warehouse-current { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 14px; border-radius: 12px; background: #f4f7fc; }
+.warehouse-current div { display: grid; min-width: 0; gap: 5px; }.warehouse-current span { color: #8190a5; font-size: 12px; }.warehouse-current strong { overflow-wrap: anywhere; color: #172840; font-size: 16px; }
+.warehouse-current button { flex: none; padding: 8px 10px; border-radius: 8px; background: #fff; color: #245eea; }
+.create-order { width: 100%; min-height: 46px; margin-top: 12px; padding: 0 12px; border-radius: 10px; background: #245eea; color: #fff; font-size: 15px; font-weight: 600; }
 .list-section .content { padding-top: 16px; }
 .list-section .content article { background: #f7f9fd; box-shadow: none; }
 </style>
