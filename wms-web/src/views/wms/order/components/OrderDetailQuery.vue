@@ -30,13 +30,17 @@ const moveColumn = (index: number, delta: number) => { const target = index + de
 const saveColumns = () => { columns.value = draftColumns.value.map((column) => ({ ...column })); localStorage.setItem(storageKey, JSON.stringify(columns.value)); settingsVisible.value = false }
 const dateText = (value: any) => value ? formatDate(value, 'YYYY-MM-DD') : '-'
 const textValue = (value: any) => value ?? '-'
+let listRequestId = 0
 const load = async () => {
+  const requestId = ++listRequestId
   loading.value = true
   try {
     const result = await request.get({ url: '/wms/order-detail-query/page', params: { ...query, direction: props.direction, startTime: dates.value?.[0], endTime: dates.value?.[1] } })
-    rows.value = result.list
-    total.value = result.total
-  } finally { loading.value = false }
+    if (requestId === listRequestId) {
+      rows.value = result.list
+      total.value = result.total
+    }
+  } finally { if (requestId === listRequestId) loading.value = false }
 }
 const search = () => { query.pageNo = 1; load() }
 const reset = () => { Object.keys(query).forEach((key) => delete query[key]); Object.assign(query, { pageNo: 1, pageSize: 10 }); dates.value = []; load() }

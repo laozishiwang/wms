@@ -71,6 +71,8 @@
               <div>{{ detail.skuName || '-' }}</div>
               <div v-if="detail.skuCode" class="text-12px">编号：{{ detail.skuCode }}</div>
               <div v-if="detail.batchNo" class="text-12px">批次：{{ detail.batchNo }}</div>
+              <div v-if="detail.bookSerialNos?.length" class="text-12px">账面序列号：{{ detail.bookSerialNos.join('，') }}</div>
+              <div v-if="detail.actualSerialNos?.length" class="text-12px">实盘序列号：{{ detail.actualSerialNos.join('，') }}</div>
             </td>
             <td class="border border-solid border-#dcdfe6 p-8px text-right">
               {{ formatQuantity(detail.quantity) || '-' }}
