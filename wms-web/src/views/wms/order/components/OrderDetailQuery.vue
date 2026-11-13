@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import request from '@/config/axios'
+import { formatDate } from '@/utils/formatTime'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import WarehouseSelect from '@/views/wms/md/warehouse/components/WarehouseSelect.vue'
 const props = defineProps<{ direction: 'receipt' | 'shipment' }>()
@@ -43,7 +44,7 @@ defineExpose({ open })
       <el-table-column prop="no" label="单据号" min-width="150" fixed />
       <el-table-column label="状态" min-width="100"><template #default="{ row }"><dict-tag :type="DICT_TYPE.WMS_ORDER_STATUS" :value="row.status" /></template></el-table-column>
       <el-table-column label="类型" min-width="120"><template #default="{ row }"><dict-tag :type="direction === 'receipt' ? DICT_TYPE.WMS_RECEIPT_ORDER_TYPE : DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE" :value="row.type" /></template></el-table-column>
-      <el-table-column prop="orderTime" label="单据日期" min-width="160" />
+      <el-table-column label="单据日期" min-width="160"><template #default="{ row }">{{ row.orderTime ? formatDate(row.orderTime, 'YYYY-MM-DD') : '-' }}</template></el-table-column>
       <el-table-column prop="warehouseName" label="仓库" min-width="120" />
       <el-table-column prop="itemName" label="物品名称" min-width="150" />
       <el-table-column prop="skuCode" label="规格编号" min-width="130" />
