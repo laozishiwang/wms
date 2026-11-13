@@ -474,7 +474,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <div v-if="canViewSummary" class="welcome"><div class="welcome-heading"><div><p>单据总览</p></div><Icon icon="ep:data-analysis" :size="25" /></div><div class="overview"><div v-for="item in [{type:1,label:'入库'},{type:2,label:'出库'},{type:3,label:'移库'},{type:4,label:'盘库'}]" :key="item.type"><span>{{ item.label }}</span><strong>{{ summaryCount(item.type) }}</strong></div></div></div>
       <h2>仓库作业</h2>
       <div class="work-grid"><button v-for="(label, key) in labels" :key="key" @click="openDashboardWork(key as Tab)"><span class="work-icon"><Icon :icon="{ receipt: 'ep:download', shipment: 'ep:upload', movement: 'ep:sort', check: 'ep:circle-check', inventory: 'ep:box' }[key]" /></span><strong>{{ label }}</strong></button></div>
-      <template v-if="canViewSummary"><h2>单据进度</h2><div class="progress-grid"><div v-for="state in [{status:1,label:'待审批',icon:'ep:document-checked'}, {status:0,label:'草稿',icon:'ep:edit-pen'}]" :key="state.status" class="progress-card"><div class="progress-heading"><Icon :icon="state.icon" :size="19" /><strong>{{ state.label }}</strong><Icon icon="ep:arrow-right" :size="14" /></div><div class="progress-counts"><div v-for="item in [{type:1,label:'入库',tab:'receipt'},{type:2,label:'出库',tab:'shipment'},{type:3,label:'移库',tab:'movement'},{type:4,label:'盘库',tab:'check'}]" :key="item.type" @click="state.status === 0 && openDashboardWork(item.tab as Tab, state.status)"><span>{{ item.label }}</span><b>{{ summaryStatus(item.type, state.status) }}</b></div></div></div></div></template>
+      <template v-if="canViewSummary"><h2>单据进度</h2><div class="progress-grid"><div v-for="state in [{status:1,label:'待审批',icon:'ep:document-checked'}, {status:0,label:'草稿',icon:'ep:edit-pen'}]" :key="state.status" class="progress-card"><div class="progress-heading"><Icon :icon="state.icon" :size="19" /><strong>{{ state.label }}</strong></div><div class="progress-counts"><button v-for="item in [{type:1,label:'入库',tab:'receipt'},{type:2,label:'出库',tab:'shipment'},{type:3,label:'移库',tab:'movement'},{type:4,label:'盘库',tab:'check'}]" :key="item.type" type="button" @click="openDashboardWork(item.tab as Tab, state.status)"><span>{{ item.label }}</span><b>{{ summaryStatus(item.type, state.status) }}</b></button></div></div></div></template>
     </section>
     <template v-else>
     <button class="home-link" @click="goHome">‹ 工作台</button>
@@ -622,6 +622,7 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .create-order { width: 100%; min-height: 46px; margin-top: 12px; padding: 0 12px; border-radius: 10px; background: #245eea; color: #fff; font-size: 15px; font-weight: 600; }
 .list-section .content { padding-top: 16px; }
 .list-section .content article { background: #f7f9fd; box-shadow: none; }
+.progress-counts button { display: grid; gap: 5px; padding: 2px 0; background: transparent; text-align: left; }
 .receipt-info .location-search { padding: 14px 0 0; gap: 6px; }
 .receipt-info .location-search input { flex: 1; width: 0; max-width: none; border: 1px solid #dce5f1; background: #fff; }
 .receipt-info .location-search button:not(.scan-trigger) { padding: 10px; white-space: nowrap; }
