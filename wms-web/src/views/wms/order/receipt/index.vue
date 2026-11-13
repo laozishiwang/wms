@@ -156,6 +156,7 @@
         />
       </el-form-item>
       <el-form-item>
+        <el-button @click="detailQueryRef?.open()">明细查询</el-button>
         <el-button @click="handleQuery">
           <Icon class="mr-5px" icon="ep:search" />
           搜索
@@ -400,6 +401,7 @@
   </ContentWrap>
 
   <!-- 表单弹窗：添加/修改 -->
+  <OrderDetailQuery ref="detailQueryRef" direction="receipt" />
   <ReceiptOrderForm ref="formRef" @success="getList" />
   <ReceiptOrderDetail ref="detailRef" />
   <ReceiptOrderPrint ref="printRef" />
@@ -414,6 +416,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { ReceiptOrderApi, ReceiptOrderVO } from '@/api/wms/order/receipt'
 import { ReceiptOrderDetailVO } from '@/api/wms/order/receipt/detail'
 import MerchantSelect from '@/views/wms/md/merchant/components/MerchantSelect.vue'
+import OrderDetailQuery from '../components/OrderDetailQuery.vue'
 import WarehouseSelect from '@/views/wms/md/warehouse/components/WarehouseSelect.vue'
 import {
   OrderDeleteStatusList,
@@ -436,6 +439,7 @@ import download from '@/utils/download'
 /** WMS 入库单 */
 defineOptions({ name: 'WmsReceiptOrder' })
 
+const detailQueryRef = ref<InstanceType<typeof OrderDetailQuery>>()
 const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化
 
