@@ -64,9 +64,9 @@ const save = async () => {
       <p>目标库位（留空为未分配）</p><InboundLocationSelect v-model="row.targetLocationId" :warehouse-id="target" />
       <p>数量</p><el-input-number v-model="row.quantity" :min="0.001" :precision="3" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
-    </div><p><el-button :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
+    </div><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
     <article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }} · 数量：{{ item.quantity }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><el-button link @click="details.splice(index, 1)">删除</el-button></article>
-    <p><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
+    <p class="save-row"><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
   </section>
 </template>
 <style scoped>
@@ -85,4 +85,5 @@ article p { font-weight: normal; }
 .scan-panel :deep(.el-button), .detail-panel :deep(.el-button) { min-height: 44px; border-radius: 10px; }
 :deep(.el-button--primary) { min-height: 46px; border-radius: 11px; font-weight: 650; }
 article { border: 1px solid #e8eef8; color: #243854; line-height: 1.6; }
+.action-row { display:flex; gap:10px; margin:16px 0; }.action-row :deep(.el-button) { margin:0; min-height:48px; padding:0 16px; border-radius:13px; font-weight:650; }.action-row :deep(.add-action) { flex:1; background:#eaf2ff; border-color:#dce9ff; color:#245eea; }.save-row :deep(.el-button) { width:100%; min-height:52px; border-radius:14px; background:#245eea; border-color:#245eea; box-shadow:0 8px 18px #245eea2b; }.scan-panel :deep(.el-button) { min-height:46px; font-weight:600; }.back { min-height:44px; }
 </style>
