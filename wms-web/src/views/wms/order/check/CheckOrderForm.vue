@@ -94,6 +94,7 @@
           <ScanItemScope v-model="scanSku" />
           <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描物品码或序列号" @keyup.enter="scanCount" />
           <el-button :loading="scanLoading" plain type="primary" @click="scanCount">扫码录入</el-button>
+          <ScanButton label="连续扫码" continuous :process-scan="queueScan" />
         </template>
       </div>
       <el-table
@@ -231,6 +232,7 @@
 
 <script lang="ts" setup>
 import request from '@/config/axios'
+import ScanButton from '@/views/wms/pda/ScanButton.vue'
 import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'
 import { checkPermi } from '@/utils/permission'
@@ -275,7 +277,9 @@ const message = useMessage()
 const scanValue = ref('')
 const scanSku = ref<ItemSkuVO>()
 const scanReady = ref(false)
-const scanLoading = ref(false)
+const pendingScans = ref(0)
+const scanLoading = computed(() => pendingScans.value > 0)
+let scanQueue = Promise.resolve()
 let scanFormVersion = 0
 
 const dialogVisible = ref(false)
@@ -591,16 +595,17 @@ const startScan = async () => {
   scanValue.value = ''
 }
 
-const scanCount = async () => {
-  const value = scanValue.value.trim(), warehouseId = formData.value.warehouseId, scopeId = scanSku.value?.id, version = scanFormVersion
-  if (!value || !warehouseId || !scanReady.value || scanLoading.value) return
-  scanLoading.value = true
-  try {
+const queueScan = (raw: string) => {
+  const value = raw.trim(), warehouseId = formData.value.warehouseId, scopeId = scanSku.value?.id, version = scanFormVersion
+  if (!value || !warehouseId || !scanReady.value) return Promise.resolve({ ok: false, message: '请先清零并选择仓库' })
+  pendingScans.value++
+  const result = scanQueue.then(async () => {
+    if (!dialogVisible.value || version !== scanFormVersion || scopeId !== scanSku.value?.id || warehouseId !== formData.value.warehouseId || !scanReady.value) return { ok: false, message: '盘点条件已变更，请重新扫码' }
     const scoped = () => (formData.value.details || []).filter(row => scopeId == null || row.skuId === scopeId)
     const serial = scoped().filter(row => row.bookSerialNos?.includes(value) || row.actualSerialNos?.includes(value))
-    if (serial.length > 1) { message.warning('序列号对应多条明细，请手动核对'); return }
+    if (serial.length > 1) return { ok: false, message: '序列号对应多条明细，请手动核对' }
     if (serial.length === 1) {
-      if (serial[0].actualSerialNos?.includes(value)) { message.warning('该序列号已盘点'); return }
+      if (serial[0].actualSerialNos?.includes(value)) return { ok: false, message: '该序列号已盘点' }
       setSerials(serial[0], [...(serial[0].actualSerialNos || []), value])
     } else {
       let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
@@ -609,22 +614,24 @@ const scanCount = async () => {
         parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value, skuId: scopeId } })
         if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
       }
-      if (skus.length !== 1 || !skus[0].id || (scopeId != null && skus[0].id !== scopeId)) { message.warning('未找到唯一物品或与指定物品不一致'); return }
+      if (skus.length !== 1 || !skus[0].id || (scopeId != null && skus[0].id !== scopeId)) return { ok: false, message: '未找到唯一物品或与指定物品不一致' }
       const quantity = parsed?.quantity ? Number(parsed.quantity) : 1
-      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) return { ok: false, message: '二维码数量最多支持两位小数' }
       const balances = parsed ? await listArrivalBalances(warehouseId, skus[0].id) : []
-      if (!dialogVisible.value || version !== scanFormVersion || scopeId !== scanSku.value?.id || warehouseId !== formData.value.warehouseId || !scanReady.value) { message.warning('盘点条件已变更，请重新扫码'); return }
+      if (!dialogVisible.value || version !== scanFormVersion || scopeId !== scanSku.value?.id || warehouseId !== formData.value.warehouseId || !scanReady.value) return { ok: false, message: '盘点条件已变更，请重新扫码' }
       const rows = scoped().filter(row => row.skuId === skus[0].id && (!parsed || balances.some(stock => (stock.arrivalId ?? 0) === row.arrivalId && (stock.locationId ?? undefined) === row.locationId && (stock.batchNo || '') === (row.batchNo || '') && matchesScanAttributes({ ...stock }, parsed!))))
-      if (rows.length !== 1) { message.warning(rows.length ? '匹配多条盘点明细，请手动填写' : '没有匹配的盘点明细'); return }
+      if (rows.length !== 1) return { ok: false, message: rows.length ? '匹配多条盘点明细，请手动填写' : '没有匹配的盘点明细' }
       const row = rows[0]
-      if (row.bookSerialNos?.length) { message.warning('该明细含序列号，请扫描序列号或手动填写'); return }
+      if (row.bookSerialNos?.length) return { ok: false, message: '该明细含序列号，请扫描序列号或手动填写' }
       row.checkQuantity = Number((Number(row.checkQuantity || 0) + quantity).toFixed(2))
       handleDetailCheckQuantityChange(row)
     }
-    scanValue.value = ''
-    message.success('盘点成功')
-  } finally { scanLoading.value = false }
+    return { ok: true, message: `扫码成功：${value}` }
+  }).catch((error) => ({ ok: false, message: typeof error === 'string' && error !== 'error' ? error : error instanceof Error ? error.message : '扫码处理失败，请重试' })).finally(() => { pendingScans.value-- })
+  scanQueue = result.then(() => {})
+  return result
 }
+const scanCount = async () => { const value = scanValue.value.trim(); if (!value) return; scanValue.value = ''; const result = await queueScan(value); if (result.ok) message.success(result.message); else message.warning(result.message) }
 
 const handleDetailCheckQuantityChange = (detail: CheckOrderFormDetail) => {
   if (detail.price !== undefined && detail.price !== null) {

@@ -67,6 +67,7 @@
         <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
         <ScanItemScope v-model="scanSku" />
         <el-button :loading="scanLoading" :disabled="!canAddDetail" plain type="primary" @click="addScannedItem">扫码添加</el-button>
+          <ScanButton label="连续扫码" continuous :process-scan="queueScan" />
       </div>
       <el-table
         :data="formData.details"
@@ -203,6 +204,7 @@ import { listArrivalBalances, validateArrivalBalances } from '@/views/wms/invent
 import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'
 import request from '@/config/axios'
 import type { ItemSkuVO } from '@/api/wms/md/item/sku'
+import ScanButton from '@/views/wms/pda/ScanButton.vue'
 import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import { MovementOrderApi, MovementOrderVO } from '@/api/wms/order/movement'
 import { MovementOrderDetailVO } from '@/api/wms/order/movement/detail'
@@ -257,7 +259,9 @@ const formRef = ref()
 const inventorySelectRef = ref()
 const scanValue = ref('')
 const scanSku = ref<ItemSkuVO>()
-const scanLoading = ref(false)
+const pendingScans = ref(0)
+const scanLoading = computed(() => pendingScans.value > 0)
+let scanQueue = Promise.resolve()
 let scanFormVersion = 0
 
 const isPrepareOrder = computed(
@@ -319,36 +323,39 @@ function buildDetail(inventory: InventorySelectRow): MovementOrderDetailVO {
   }
 }
 
-const addScannedItem = async () => {
-  const value = scanValue.value.trim(), source = formData.value.sourceWarehouseId, target = formData.value.targetWarehouseId, formVersion = scanFormVersion
-  if (!value || !source || !target || scanLoading.value) return
+const queueScan = (raw: string) => {
+  const value = raw.trim(), source = formData.value.sourceWarehouseId, target = formData.value.targetWarehouseId, formVersion = scanFormVersion
+  if (!value || !source || !target) return Promise.resolve({ ok: false, message: '请先选择仓库并输入物品码' })
   const scopeId = scanSku.value?.id
-  scanLoading.value = true
-  try {
+  pendingScans.value++
+  const result = scanQueue.then(async () => {
+    if (!dialogVisible.value || formVersion !== scanFormVersion || scopeId !== scanSku.value?.id || source !== formData.value.sourceWarehouseId || target !== formData.value.targetWarehouseId) return { ok: false, message: '仓库或单据已变更，请重新扫码' }
     let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
     let parsed: Record<string, string> | null = null
     if (!skus.length) {
       parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value, skuId: scopeId } })
       if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
     }
-    if (skus.length !== 1 || !skus[0].id) { message.warning('未找到唯一物品规格'); return }
-    if (scopeId && skus[0].id !== scopeId) { message.warning('扫描的物品与指定扫码物品不一致'); return }
+    if (skus.length !== 1 || !skus[0].id) return { ok: false, message: '未找到唯一物品规格' }
+    if (scopeId && skus[0].id !== scopeId) return { ok: false, message: '扫描的物品与指定扫码物品不一致' }
     const sku = skus[0], quantity = parsed?.quantity ? Number(parsed.quantity) : 1
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) return { ok: false, message: '二维码数量最多支持两位小数' }
     const balances = await listArrivalBalances(source, sku.id!)
-    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.sourceWarehouseId !== source || formData.value.targetWarehouseId !== target) { message.warning('仓库或单据已变更，请重新扫码'); return }
+    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.sourceWarehouseId !== source || formData.value.targetWarehouseId !== target) return { ok: false, message: '仓库或单据已变更，请重新扫码' }
     const candidates = balances.filter(item => Number(item.quantity) > 0 && matchesScanAttributes({ ...item }, parsed || {}))
-    if (candidates.length !== 1) { message.warning(candidates.length ? '匹配到多条来源库存，请手动选择' : '没有匹配的来源库存'); return }
+    if (candidates.length !== 1) return { ok: false, message: candidates.length ? '匹配到多条来源库存，请手动选择' : '没有匹配的来源库存' }
     const stock = candidates[0], arrivalId = stock.arrivalId ?? 0
     const rows = (formData.value.details || []).filter(item => item.skuId === sku.id && (item.sourceLocationId ?? null) === stock.locationId && (item.batchNo || '') === (stock.batchNo || '') && item.arrivalId === arrivalId)
-    if (rows.some(item => item.serialNos?.length)) { message.warning('明细含序列号，请手动核对'); return }
+    if (rows.some(item => item.serialNos?.length)) return { ok: false, message: '明细含序列号，请手动核对' }
     const total = rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0) + quantity
-    if (Number(total.toFixed(2)) > Number(stock.quantity)) { message.warning('数量超过可用库存'); return }
+    if (Number(total.toFixed(2)) > Number(stock.quantity)) return { ok: false, message: '数量超过可用库存' }
     formData.value.details = [...(formData.value.details || []), { itemId: sku.itemId, itemCode: sku.itemCode, itemName: sku.itemName, unit: sku.unit, skuId: sku.id, skuCode: sku.code, skuName: sku.name, sourceWarehouseId: source, targetWarehouseId: target, sourceLocationId: stock.locationId ?? undefined, batchNo: stock.batchNo || undefined, arrivalId, quantity }]
-    scanValue.value = ''
-    message.success('已添加物品明细，请选择目标库位')
-  } finally { scanLoading.value = false }
+    return { ok: true, message: `扫码成功：${value}` }
+  }).catch((error) => ({ ok: false, message: typeof error === 'string' && error !== 'error' ? error : error instanceof Error ? error.message : '扫码处理失败，请重试' })).finally(() => { pendingScans.value-- })
+  scanQueue = result.then(() => {})
+  return result
 }
+const addScannedItem = async () => { const value = scanValue.value.trim(); if (!value) return; scanValue.value = ''; const result = await queueScan(value); if (result.ok) message.success(result.message); else message.warning(result.message) }
 
 function normalizeDetails(details: MovementOrderDetailVO[]) {
   return details.map((detail) => ({

@@ -83,6 +83,7 @@
         <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
         <ScanItemScope v-model="scanSku" />
         <el-button :loading="scanLoading" :disabled="!formData.warehouseId" plain type="primary" @click="addScannedItem">扫码添加</el-button>
+        <ScanButton label="连续扫码" continuous :disabled="!formData.warehouseId" :process-scan="queueScan" />
         <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
         <el-button plain @click="downloadImportTemplate">下载导入模板</el-button>
         <el-button plain :disabled="!formData.warehouseId" @click="importFileRef?.click()">导入明细</el-button>
@@ -261,6 +262,7 @@
 
 <script lang="ts" setup>
 import request from '@/config/axios'
+import ScanButton from '@/views/wms/pda/ScanButton.vue'
 import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import download from '@/utils/download'
 import { ApprovalApi } from '@/api/wms/approval'
@@ -407,27 +409,30 @@ function buildDetail(sku: ItemSkuVO): ReceiptOrderDetailVO {
 
 const scanValue = ref('')
 const scanSku = ref<ItemSkuVO>()
-const scanLoading = ref(false)
+const pendingScans = ref(0)
+const scanLoading = computed(() => pendingScans.value > 0)
 let scanFormVersion = 0
-const addScannedItem = async () => {
-  const value = scanValue.value.trim()
-  if (!value || scanLoading.value || !formData.value.warehouseId) return
+let scanQueue = Promise.resolve()
+const queueScan = (raw: string) => {
+  const value = raw.trim()
   const warehouseId = formData.value.warehouseId
   const formVersion = scanFormVersion
   const scopeId = scanSku.value?.id
-  scanLoading.value = true
-  try {
+  if (!value || !warehouseId) return Promise.resolve({ ok: false, message: '请先选择仓库并输入物品码' })
+  pendingScans.value++
+  const result = scanQueue.then(async () => {
+    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) return { ok: false, message: '仓库或单据已变更，请重新扫码' }
     let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
     let parsed: Record<string, string> | null = null
     if (skus.length === 0) {
       parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value, skuId: scopeId } })
       if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
     }
-    if (skus.length !== 1 || !skus[0].id) { message.warning('未找到唯一物品规格，请检查条码或二维码规则'); return }
-    if (scopeId && skus[0].id !== scopeId) { message.warning('扫描的物品与指定扫码物品不一致'); return }
-    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) { message.warning('仓库或单据已变更，请重新扫码'); return }
+    if (skus.length !== 1 || !skus[0].id) return { ok: false, message: '未找到唯一物品规格，请检查条码或二维码规则' }
+    if (scopeId && skus[0].id !== scopeId) return { ok: false, message: '扫描的物品与指定扫码物品不一致' }
+    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) return { ok: false, message: '仓库或单据已变更，请重新扫码' }
     const quantity = parsed?.quantity ? Number(parsed.quantity) : 1
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) return { ok: false, message: '二维码数量最多支持两位小数' }
     const detail = buildDetail(skus[0])
     detail.quantity = quantity
     if (parsed) {
@@ -439,17 +444,19 @@ const addScannedItem = async () => {
       for (const field of fields) {
         if (parsed[field] !== undefined) {
           const number = Number(parsed[field])
-          if (!Number.isFinite(number)) { message.warning('二维码中的数值超出支持范围'); return }
+          if (!Number.isFinite(number)) return { ok: false, message: '二维码中的数值超出支持范围' }
           detail[field] = number
         }
       }
     }
     detail.totalPrice = multiplyPrice(detail.quantity, detail.price)
     formData.value.details = [...(formData.value.details || []), detail]
-    scanValue.value = ''
-    message.success('已添加物品明细')
-  } finally { scanLoading.value = false }
+    return { ok: true, message: `已添加：${value}` }
+  }).catch((error) => ({ ok: false, message: typeof error === 'string' && error !== 'error' ? error : error instanceof Error ? error.message : '扫码处理失败，请重试' })).finally(() => { pendingScans.value-- })
+  scanQueue = result.then(() => {})
+  return result
 }
+const addScannedItem = async () => { const value = scanValue.value.trim(); if (!value) return; scanValue.value = ''; const result = await queueScan(value); if (result.ok) message.success(result.message); else message.warning(result.message) }
 
 function normalizeDetails(details: ReceiptOrderDetailVO[]) {
   return details.map((detail) => ({
