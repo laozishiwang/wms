@@ -80,6 +80,8 @@
             </el-button>
           </span>
         </el-tooltip>
+        <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
+        <el-button :loading="scanLoading" :disabled="!formData.warehouseId" plain type="primary" @click="addScannedItem">扫码添加</el-button>
         <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
         <el-button plain @click="downloadImportTemplate">下载导入模板</el-button>
         <el-button plain :disabled="!formData.warehouseId" @click="importFileRef?.click()">导入明细</el-button>
@@ -224,7 +226,7 @@
           <el-button
             v-if="isSavedPrepareOrder && !approvalEnabled"
             v-hasPermi="['wms:receipt-order:complete']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="success"
             @click="handleComplete"
           >
@@ -233,7 +235,7 @@
           <el-button
             v-if="isSavedPrepareOrder"
             v-hasPermi="['wms:receipt-order:cancel']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="danger"
             @click="handleCancel"
           >
@@ -243,7 +245,7 @@
         <div>
           <el-button
             v-if="isPrepareOrder"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="primary"
             @click="submitForm"
           >
@@ -350,6 +352,8 @@ const isSavedPrepareOrder = computed(
 
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
+  scanFormVersion++
+  scanValue.value = ''
   loadColumnOrder()
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   dialogVisible.value = true
@@ -396,6 +400,49 @@ function buildDetail(sku: ItemSkuVO): ReceiptOrderDetailVO {
     price: sku.costPrice,
     totalPrice: undefined
   }
+}
+
+const scanValue = ref('')
+const scanLoading = ref(false)
+let scanFormVersion = 0
+const addScannedItem = async () => {
+  const value = scanValue.value.trim()
+  if (!value || scanLoading.value || !formData.value.warehouseId) return
+  const warehouseId = formData.value.warehouseId
+  const formVersion = scanFormVersion
+  scanLoading.value = true
+  try {
+    let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
+    let parsed: Record<string, string> | null = null
+    if (skus.length === 0) {
+      parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value } })
+      if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
+    }
+    if (skus.length !== 1 || !skus[0].id) { message.warning('未找到唯一物品规格，请检查条码或二维码规则'); return }
+    if (!dialogVisible.value || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) { message.warning('仓库或单据已变更，请重新扫码'); return }
+    const quantity = parsed?.quantity ? Number(parsed.quantity) : 1
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
+    const detail = buildDetail(skus[0])
+    detail.quantity = quantity
+    if (parsed) {
+      detail.batchNo = parsed.batchNo
+      detail.palletNo = parsed.palletNo
+      detail.boxNo = parsed.boxNo
+      detail.rollNo = parsed.rollNo
+      const fields = ['netLength', 'grossLength', 'netWeight', 'grossWeight', 'length', 'width', 'height', 'price', 'salesPrice'] as const
+      for (const field of fields) {
+        if (parsed[field] !== undefined) {
+          const number = Number(parsed[field])
+          if (!Number.isFinite(number)) { message.warning('二维码中的数值超出支持范围'); return }
+          detail[field] = number
+        }
+      }
+    }
+    detail.totalPrice = multiplyPrice(detail.quantity, detail.price)
+    formData.value.details = [...(formData.value.details || []), detail]
+    scanValue.value = ''
+    message.success('已添加物品明细')
+  } finally { scanLoading.value = false }
 }
 
 function normalizeDetails(details: ReceiptOrderDetailVO[]) {

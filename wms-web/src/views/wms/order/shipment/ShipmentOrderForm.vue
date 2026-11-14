@@ -80,6 +80,8 @@
             </el-button>
           </span>
         </el-tooltip>
+        <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
+        <el-button :loading="scanLoading" :disabled="!formData.warehouseId" plain type="primary" @click="addScannedItem">扫码添加</el-button>
         <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
         <ShipmentImport :warehouse-id="formData.warehouseId" @imported="handleImported" />
         <span class="text-12px text-gray-500">模板以规格、库位和批次匹配库存</span>
@@ -186,7 +188,7 @@
           <el-button
             v-if="isSavedPrepareOrder && !approvalEnabled"
             v-hasPermi="['wms:shipment-order:complete']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="success"
             @click="handleComplete"
           >
@@ -195,7 +197,7 @@
           <el-button
             v-if="isSavedPrepareOrder"
             v-hasPermi="['wms:shipment-order:cancel']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="danger"
             @click="handleCancel"
           >
@@ -205,7 +207,7 @@
         <div>
           <el-button
             v-if="isPrepareOrder"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="primary"
             @click="submitForm"
           >
@@ -223,7 +225,10 @@ import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
-import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
+import { listArrivalBalances, validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
+import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'
+import request from '@/config/axios'
+import type { ItemSkuVO } from '@/api/wms/md/item/sku'
 import ReceiptColumnSettings from '@/views/wms/order/receipt/ReceiptColumnSettings.vue'
 import ShipmentImport from './ShipmentImport.vue'
 import { getCurrentUserId, getTenantId } from '@/utils/auth'
@@ -255,6 +260,9 @@ defineOptions({ name: 'WmsShipmentOrderForm' })
 
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
+const scanValue = ref('')
+const scanLoading = ref(false)
+let scanFormVersion = 0
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
@@ -314,6 +322,8 @@ const isSavedPrepareOrder = computed(
 
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
+  scanFormVersion++
+  scanValue.value = ''
   loadColumnOrder()
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   dialogVisible.value = true
@@ -355,6 +365,36 @@ function buildDetail(inventory: InventorySelectRow): ShipmentOrderDetailVO {
     price: undefined,
     totalPrice: undefined
   }
+}
+
+const addScannedItem = async () => {
+  const value = scanValue.value.trim(), warehouseId = formData.value.warehouseId, formVersion = scanFormVersion
+  if (!value || !warehouseId || scanLoading.value) return
+  scanLoading.value = true
+  try {
+    let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
+    let parsed: Record<string, string> | null = null
+    if (!skus.length) {
+      parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value } })
+      if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
+    }
+    if (skus.length !== 1 || !skus[0].id) { message.warning('未找到唯一物品规格'); return }
+    const sku = skus[0]
+    const quantity = parsed?.quantity ? Number(parsed.quantity) : 1
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
+    const balances = await listArrivalBalances(warehouseId, sku.id!)
+    if (!dialogVisible.value || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) { message.warning('仓库或单据已变更，请重新扫码'); return }
+    const candidates = balances.filter(item => Number(item.quantity) > 0 && matchesScanAttributes({ ...item }, parsed || {}))
+    if (candidates.length !== 1) { message.warning(candidates.length ? '匹配到多条库存，请手动选择' : '没有匹配的可用库存'); return }
+    const stock = candidates[0], arrivalId = stock.arrivalId ?? 0
+    const rows = (formData.value.details || []).filter(item => item.skuId === sku.id && (item.locationId ?? null) === stock.locationId && (item.batchNo || '') === (stock.batchNo || '') && item.arrivalId === arrivalId)
+    if (rows.some(item => item.serialNos?.length)) { message.warning('明细含序列号，请手动核对'); return }
+    const total = rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0) + quantity
+    if (Number(total.toFixed(2)) > Number(stock.quantity)) { message.warning('数量超过可用库存'); return }
+    formData.value.details = [...(formData.value.details || []), { itemId: sku.itemId, itemCode: sku.itemCode, itemName: sku.itemName, unit: sku.unit, skuId: sku.id, skuCode: sku.code, skuName: sku.name, warehouseId, locationId: stock.locationId ?? undefined, batchNo: stock.batchNo || undefined, arrivalId, quantity }]
+    scanValue.value = ''
+    message.success('已添加物品明细')
+  } finally { scanLoading.value = false }
 }
 
 function normalizeDetails(details: ShipmentOrderDetailVO[]) {
