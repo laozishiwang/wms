@@ -74,7 +74,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="库位" min-width="180"><template #default="{ row }">{{ locationLabel(row.locationId) }}</template></el-table-column>
+        <el-table-column label="库区 / 库位" min-width="180"><template #default="{ row }">{{ locationLabel(row.locationId) }}</template></el-table-column>
         <el-table-column label="批次号" prop="batchNo" min-width="140" />
         <el-table-column label="托盘/箱/卷号" min-width="180"><template #default="{ row }">托盘：{{ row.palletNo || '-' }}<br />箱：{{ row.boxNo || '-' }}<br />卷：{{ row.rollNo || '-' }}</template></el-table-column>
         <el-table-column label="实际尺寸与重量" min-width="190"><template #default="{ row }">净长/毛长(cm)：{{ row.netLength ?? '-' }} / {{ row.grossLength ?? '-' }}<br />净重/毛重(kg)：{{ row.netWeight ?? '-' }} / {{ row.grossWeight ?? '-' }}<br />长/宽/高(cm)：{{ row.length ?? '-' }} / {{ row.width ?? '-' }} / {{ row.height ?? '-' }}</template></el-table-column>
@@ -114,6 +114,7 @@ import { ReceiptOrderApi, ReceiptOrderVO } from '@/api/wms/order/receipt'
 import { ReceiptOrderDetailVO } from '@/api/wms/order/receipt/detail'
 import request from '@/config/axios'
 import { checkPermi } from '@/utils/permission'
+import { placePath, type StoragePlace } from '@/views/wms/pda/place'
 import {
   formatPrice,
   formatQuantity,
@@ -132,11 +133,11 @@ interface DetailRow extends ReceiptOrderDetailVO {
 const loading = ref(false) // 加载中
 const dialogVisible = ref(false) // 弹窗的是否展示
 const detailData = ref<ReceiptOrderVO>({}) // 详情数据
-const locations = ref<Array<{ id: number; code: string; name: string; type: string }>>([])
+const locations = ref<StoragePlace[]>([])
 const locationLabel = (id?: number) => {
   if (!id) return '未分配'
   const location = locations.value.find((item) => item.id === id)
-  return location ? `${location.name}（${location.code}）` : `库位 #${id}`
+  return location ? `${placePath(locations.value, id)}（${location.code}）` : `库位 #${id}`
 }
 const detailRows = computed<DetailRow[]>(() =>
   (detailData.value.details || []).map((detail) => ({

@@ -63,8 +63,8 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="来源库位 ID" prop="sourceLocationId" min-width="120" />
-        <el-table-column label="目标库位 ID" prop="targetLocationId" min-width="120" />
+        <el-table-column label="来源库区 / 库位" min-width="160"><template #default="{ row }">{{ placePath(sourcePlaces, row.sourceLocationId) }}</template></el-table-column>
+        <el-table-column label="目标库区 / 库位" min-width="160"><template #default="{ row }">{{ placePath(targetPlaces, row.targetLocationId) }}</template></el-table-column>
         <el-table-column label="批次号" prop="batchNo" min-width="140" />
         <el-table-column label="序列号" min-width="180">
           <template #default="{ row }">{{ row.serialNos?.join('，') || '-' }}</template>
@@ -88,6 +88,9 @@ import { formatNullableDate } from '@/utils/formatTime'
 import { DICT_TYPE } from '@/utils/dict'
 import { MovementOrderApi, MovementOrderVO } from '@/api/wms/order/movement'
 import { MovementOrderDetailVO } from '@/api/wms/order/movement/detail'
+import request from '@/config/axios'
+import { checkPermi } from '@/utils/permission'
+import { placePath, type StoragePlace } from '@/views/wms/pda/place'
 import {
   formatPrice,
   formatQuantity,
@@ -102,6 +105,8 @@ defineOptions({ name: 'WmsMovementOrderDetail' })
 const loading = ref(false)
 const dialogVisible = ref(false)
 const detailData = ref<MovementOrderVO>({})
+const sourcePlaces = ref<StoragePlace[]>([])
+const targetPlaces = ref<StoragePlace[]>([])
 
 interface DetailRow extends MovementOrderDetailVO {
   totalPrice?: number
@@ -136,6 +141,14 @@ const open = async (id: number) => {
   loading.value = true
   try {
     detailData.value = await MovementOrderApi.getMovementOrder(id)
+    sourcePlaces.value = []
+    targetPlaces.value = []
+    if (checkPermi(['wms:warehouse:query'])) {
+      const source = detailData.value.sourceWarehouseId
+      const target = detailData.value.targetWarehouseId
+      if (source) sourcePlaces.value = await request.get({ url: '/wms/storage-place/list', params: { warehouseId: source } })
+      if (target) targetPlaces.value = target === source ? sourcePlaces.value : await request.get({ url: '/wms/storage-place/list', params: { warehouseId: target } })
+    }
   } finally {
     loading.value = false
   }

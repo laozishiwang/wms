@@ -74,7 +74,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="库位" min-width="180"><template #default="{ row }">{{ locationLabel(row.locationId) }}</template></el-table-column>
+        <el-table-column label="库区 / 库位" min-width="180"><template #default="{ row }">{{ locationLabel(row.locationId) }}</template></el-table-column>
         <el-table-column label="批次号" prop="batchNo" min-width="140" />
         <el-table-column label="序列号" min-width="200"><template #default="scope">{{ scope.row.serialNos?.join('、') || '-' }}</template></el-table-column>
         <el-table-column align="right" label="数量" prop="quantity" width="120">
@@ -105,6 +105,7 @@ import { ShipmentOrderApi, ShipmentOrderVO } from '@/api/wms/order/shipment'
 import { ShipmentOrderDetailVO } from '@/api/wms/order/shipment/detail'
 import request from '@/config/axios'
 import { checkPermi } from '@/utils/permission'
+import { placePath, type StoragePlace } from '@/views/wms/pda/place'
 import {
   formatPrice,
   formatQuantity,
@@ -123,11 +124,11 @@ interface DetailRow extends ShipmentOrderDetailVO {
 const loading = ref(false) // 加载中
 const dialogVisible = ref(false) // 弹窗的是否展示
 const detailData = ref<ShipmentOrderVO>({}) // 详情数据
-const locations = ref<Array<{ id: number; code: string; name: string; type: string }>>([])
+const locations = ref<StoragePlace[]>([])
 const locationLabel = (id?: number) => {
   if (!id) return '未分配'
   const location = locations.value.find((item) => item.id === id)
-  return location ? `${location.name}（${location.code}）` : `库位 #${id}`
+  return location ? `${placePath(locations.value, id)}（${location.code}）` : `库位 #${id}`
 }
 const detailRows = computed<DetailRow[]>(() =>
   (detailData.value.details || []).map((detail) => ({
