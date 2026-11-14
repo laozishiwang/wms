@@ -12,6 +12,8 @@ import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
 import { buildMovementDraftDetails } from './draft-details'
+import { placePath, type StoragePlace } from './place'
+import { checkPermi } from '@/utils/permission'
 const props = defineProps<{ sourceWarehouseId: number; order?: any }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const warehouses = ref<WarehouseVO[]>([])
@@ -22,6 +24,17 @@ const sku = ref<ItemSkuVO>()
 const row = reactive<any>({ quantity: 1, serialNos: [] })
 const loading = ref(false)
 const details = ref<any[]>([])
+const sourcePlaces = ref<StoragePlace[]>([])
+const targetPlaces = ref<StoragePlace[]>([])
+watch(() => props.sourceWarehouseId, async (id) => {
+  if (!checkPermi(['wms:warehouse:query'])) return
+  sourcePlaces.value = await request.get({ url: '/wms/storage-place/list', params: { warehouseId: id } })
+}, { immediate: true })
+watch(target, async (id) => {
+  if (!checkPermi(['wms:warehouse:query'])) return
+  const places: StoragePlace[] = await request.get({ url: '/wms/storage-place/list', params: { warehouseId: id } })
+  if (id === target.value) targetPlaces.value = places
+}, { immediate: true })
 watch(target, () => { row.targetLocationId = undefined })
 onMounted(async () => {
   warehouses.value = await WarehouseApi.getWarehouseSimpleList()
@@ -77,7 +90,7 @@ const save = async () => {
       <p>数量</p><el-input-number v-model="row.quantity" :min="0.01" :precision="2" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
     </div><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
-    <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><p>数量</p><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /><p>单价</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p><el-button link type="danger" @click="details.splice(index, 1)">删除明细</el-button></article>
+    <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId || '历史未分配' }}</p><p>来源：{{ placePath(sourcePlaces, item.sourceLocationId) }}</p><p>目标：{{ placePath(targetPlaces, item.targetLocationId) }}</p><p>数量</p><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /><p>单价</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p><el-button link type="danger" @click="details.splice(index, 1)">删除明细</el-button></article>
     <p class="save-row"><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
   </section>
 </template>

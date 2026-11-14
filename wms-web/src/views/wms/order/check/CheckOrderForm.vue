@@ -113,7 +113,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="库位" min-width="120"><template #default="{ row }">{{ row.locationId ? `库位 ${row.locationId}` : '未分配库位' }}</template></el-table-column>
+        <el-table-column label="库区 / 库位" min-width="160"><template #default="{ row }">{{ placePath(places, row.locationId) }}</template></el-table-column>
         <el-table-column label="到货记录" min-width="220"><template #default="{ row }"><ArrivalSelect v-if="row.arrivalId == null" v-model="row.arrivalId" :warehouse-id="row.warehouseId" :sku-id="row.skuId" :location-id="row.locationId" :batch-no="row.batchNo" :allow-zero-unassigned="Number(row.quantity) === 0" /><span v-else>{{ row.arrivalId === 0 ? '历史未分配' : `到货 #${row.arrivalId}` }}</span></template></el-table-column>
         <el-table-column label="批次号" min-width="150">
           <template #default="{ row }">{{ row.batchNo || '未分配批次' }}</template>
@@ -225,6 +225,8 @@
 
 <script lang="ts" setup>
 import request from '@/config/axios'
+import { checkPermi } from '@/utils/permission'
+import { placePath, type StoragePlace } from '@/views/wms/pda/place'
 import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
 import { FormRules } from 'element-plus'
@@ -282,6 +284,13 @@ const formData = ref<CheckOrderFormData>({
   warehouseId: undefined,
   remark: undefined,
   details: []
+})
+const places = ref<StoragePlace[]>([])
+watch(() => formData.value.warehouseId, async (warehouseId) => {
+  places.value = []
+  if (!warehouseId || !checkPermi(['wms:warehouse:query'])) return
+  const result: StoragePlace[] = await request.get({ url: '/wms/storage-place/list', params: { warehouseId } })
+  if (warehouseId === formData.value.warehouseId) places.value = result
 })
 const formRules = reactive<FormRules>({
   no: [{ required: true, message: '盘库单号不能为空', trigger: 'blur' }],
