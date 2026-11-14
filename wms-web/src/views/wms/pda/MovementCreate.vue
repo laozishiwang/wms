@@ -24,6 +24,21 @@ const sku = ref<ItemSkuVO>()
 const row = reactive<any>({ quantity: 1, serialNos: [] })
 const loading = ref(false)
 const details = ref<any[]>([])
+const editingLocation = ref<number>()
+const targetLocation = ref<number>()
+const showTargetLocation = (index: number) => {
+  editingLocation.value = index
+  targetLocation.value = details.value[index].targetLocationId ?? undefined
+}
+const saveTargetLocation = () => {
+  if (editingLocation.value === undefined) return
+  const detail = details.value[editingLocation.value]
+  if (target.value === props.sourceWarehouseId && (detail.sourceLocationId ?? undefined) === targetLocation.value) {
+    ElMessage.warning('同仓移库的来源和目标库位不能相同'); return
+  }
+  detail.targetLocationId = targetLocation.value
+  editingLocation.value = undefined
+}
 const sourcePlaces = ref<StoragePlace[]>([])
 const targetPlaces = ref<StoragePlace[]>([])
 watch(() => props.sourceWarehouseId, async (id) => {
@@ -63,6 +78,7 @@ const add = () => {
 const save = async () => {
   if (sku.value) { ElMessage.warning('请先添加或取消当前物品'); return }
   if (!details.value.length) { ElMessage.warning('请先添加移库明细'); return }
+  if (target.value === props.sourceWarehouseId && details.value.some((item) => (item.sourceLocationId ?? undefined) === (item.targetLocationId ?? undefined))) { ElMessage.warning('同仓移库的来源和目标库位不能相同'); return }
   if (details.value.some((item) => item.id && item.totalPrice != null && item.price == null && Number(item.quantity) !== Number(item.originalQuantity))) { ElMessage.warning('修改数量前请先填写该明细单价'); return }
   const serials = details.value.flatMap((item) => item.serialNos || [])
   if (details.value.some((item) => !item.quantity || item.quantity <= 0 || (item.serialNos?.length || 0) > item.quantity) || new Set(serials).size !== serials.length) { ElMessage.warning('请检查移库数量和序列号'); return }
@@ -90,7 +106,8 @@ const save = async () => {
       <p>数量</p><el-input-number v-model="row.quantity" :min="0.01" :precision="2" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
     </div><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
-    <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId || '历史未分配' }}</p><p>来源：{{ placePath(sourcePlaces, item.sourceLocationId) }}</p><p>目标：{{ placePath(targetPlaces, item.targetLocationId) }}</p><p>数量</p><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /><p>单价</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p><el-button link type="danger" @click="details.splice(index, 1)">删除明细</el-button></article>
+    <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId || '历史未分配' }}</p><p>来源：{{ placePath(sourcePlaces, item.sourceLocationId) }}</p><p>目标：{{ placePath(targetPlaces, item.targetLocationId) }} <el-button link type="primary" @click="showTargetLocation(index)">更换</el-button></p><p>数量</p><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /><p>单价</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p><el-button link type="danger" @click="details.splice(index, 1)">删除明细</el-button></article>
+    <el-dialog :model-value="editingLocation !== undefined" title="更换目标库位" width="min(520px, 95vw)" append-to-body @close="editingLocation = undefined"><PlacePicker v-model="targetLocation" :warehouse-id="target" /><template #footer><el-button @click="editingLocation = undefined">取消</el-button><el-button type="primary" @click="saveTargetLocation">确定</el-button></template></el-dialog>
     <p class="save-row"><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
   </section>
 </template>

@@ -22,6 +22,8 @@ assert.equal(buildDraftDetails([{ ...customPrice, price: 9 }], false, true)[0].t
 const movement = { id: 20, skuLabel: '物品', locationId: 2, sourceLocationId: 2, targetLocationId: 3, quantity: 4, originalQuantity: 4, price: 6, originalPrice: 6, totalPrice: 23, serialNos: ['A'] }
 assert.equal(buildMovementDraftDetails([movement])[0].id, 20)
 assert.equal(buildMovementDraftDetails([movement])[0].totalPrice, 23)
+assert.equal(buildMovementDraftDetails([{ ...movement, targetLocationId: 8 }])[0].targetLocationId, 8)
+assert.equal(buildMovementDraftDetails([{ ...movement, targetLocationId: undefined }])[0].targetLocationId, undefined)
 assert.equal(buildMovementDraftDetails([{ ...movement, quantity: 5 }])[0].totalPrice, undefined)
 assert.deepEqual(buildMovementDraftDetails([movement])[0].serialNos, ['A'])
 assert.equal('locationId' in buildMovementDraftDetails([movement])[0], false)
