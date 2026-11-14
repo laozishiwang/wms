@@ -6,6 +6,7 @@ import ReceiptDraftDetail from './ReceiptDraftDetail.vue'
 import PlacePicker from './PlacePicker.vue'
 import { placePath, type StoragePlace } from './place'
 import { buildDraftDetails } from './draft-details'
+import { applyCountScan } from './count-scan'
 import MerchantSelect from '@/views/wms/md/merchant/components/MerchantSelect.vue'
 import ScanButton from './ScanButton.vue'
 import CheckCreate from './CheckCreate.vue'
@@ -423,6 +424,13 @@ const open = async (row: any) => {
 const scanCheck = async (code: string, locationId?: number) => {
   if (!checkScanReady.value) return
   const scopedDetails = () => locationId === undefined ? details.value : details.value.filter((item) => item.locationId === locationId)
+  const serialMatches = scopedDetails().filter((item) => item.bookSerialNos?.includes(code) || item.actualSerialNos?.includes(code))
+  if (serialMatches.length > 1) { ElMessage.warning('该序列号对应多条明细，请先选择库位'); return }
+  if (serialMatches.length === 1) {
+    if (applyCountScan(serialMatches[0], code) === 'duplicate') { ElMessage.warning('该序列号已盘点'); return }
+    dirty.value = true
+    return
+  }
   let matches = scopedDetails().filter((item) => item.skuCode === code || item.batchNo === code)
   if (!matches.length) {
     const skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
@@ -433,7 +441,7 @@ const scanCheck = async (code: string, locationId?: number) => {
     ElMessage.warning(matches.length ? '该编号对应多条明细，请手动录入' : '单据中未找到此商品或批次编号')
     return
   }
-  matches[0].checkQuantity = Number(matches[0].checkQuantity || 0) + 1
+  if (applyCountScan(matches[0]) === 'serial-required') { ElMessage.warning('该明细含序列号，请扫描序列号或手动填写'); return }
   dirty.value = true
 }
 const queueCheckScan = (raw: string) => {
@@ -580,7 +588,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <button class="back" @click="backToList">‹ 返回列表</button><div class="check-summary"><span>盘库单</span><strong>{{ selected.no }}</strong><span>{{ selected.warehouseName }}</span><div class="check-stats"><div>明细<b>{{ details.length }}</b></div><div>账面数量<b>{{ checkBookTotal }}</b></div><div>实盘数量<b>{{ checkActualTotal }}</b></div></div></div><h2 class="check-heading">盘点明细</h2>
       <template v-if="selected.status === 0">
         <details class="check-tools"><summary>位置筛选<span v-if="selectedLocation"> · {{ selectedLocation.name }}</span></summary><PlacePicker :model-value="selectedLocation?.id" :warehouse-id="selected.warehouseId" @update:model-value="filterCheckLocation" /></details>
-        <details class="check-tools"><summary>扫码盘点</summary><div class="check-scan-start"><span>{{ checkScanReady ? '已从零开始，可连续扫码' : '先清零，再开始扫码盘点' }}</span><button type="button" class="check-scan-reset" @click="resetCheck">{{ checkScanReady ? '重新清零' : '清零并开始' }}</button></div><form v-if="checkScanReady" class="search" @submit.prevent="queueCheckScan(scanCode)"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号" /><ScanButton continuous @scan="queueCheckScan" /><button>录入</button></form><p v-if="pendingCheckScans">正在处理 {{ pendingCheckScans }} 条扫码</p></details>
+        <details class="check-tools"><summary>扫码盘点</summary><div class="check-scan-start"><span>{{ checkScanReady ? '已从零开始，可连续扫码' : '先清零，再开始扫码盘点' }}</span><button type="button" class="check-scan-reset" @click="resetCheck">{{ checkScanReady ? '重新清零' : '清零并开始' }}</button></div><form v-if="checkScanReady" class="search" @submit.prevent="queueCheckScan(scanCode)"><input v-model="scanCode" placeholder="扫描物品码、批次或序列号" /><ScanButton continuous @scan="queueCheckScan" /><button>录入</button></form><p v-if="pendingCheckScans">正在处理 {{ pendingCheckScans }} 条扫码</p></details>
       </template>
       <article v-for="item in visibleDetails" :key="item.id" class="check-item"><div class="check-item-head"><div><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p></div><span>账面 <b>{{ item.quantity }} {{ item.unit }}</b></span></div><div class="check-item-place">{{ placePath(storagePlaces, item.locationId) }}<template v-if="item.batchNo"> · 批次 {{ item.batchNo }}</template> · {{ item.arrivalId ? `到货 #${item.arrivalId}` : '历史未分配' }}</div><div class="check-item-count"><span>实盘数量</span><el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><strong v-else>{{ item.checkQuantity }} {{ item.unit }}</strong></div><div v-if="selected.status === 0" class="check-item-serial"><span>实盘序列号</span><SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></div></article>
       <div class="check-actions">
