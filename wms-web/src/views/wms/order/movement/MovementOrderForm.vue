@@ -54,8 +54,8 @@
         </el-col>
       </el-row>
 
-      <div class="mb-12px flex flex-wrap items-center gap-12px">
-        <span class="text-14px font-bold">移库明细</span>
+      <DetailEntryMethods title="移库明细">
+        <template #select>
         <el-tooltip content="请先选择来源仓库和目标仓库" :disabled="canAddDetail" placement="top">
           <span>
             <el-button :disabled="!canAddDetail" plain type="primary" @click="handleAddDetail">
@@ -64,11 +64,15 @@
             </el-button>
           </span>
         </el-tooltip>
+        </template>
+        <template #scan>
         <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
         <ScanItemScope v-model="scanSku" />
         <el-button :loading="scanLoading" :disabled="!canAddDetail" plain type="primary" @click="addScannedItem">扫码添加</el-button>
           <ScanButton label="连续扫码" continuous :process-scan="queueScan" />
-      </div>
+        </template>
+      </DetailEntryMethods>
+
       <el-table
         :data="formData.details"
         :summary-method="getDetailSummaries"
@@ -203,6 +207,7 @@ import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import { listArrivalBalances, validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
 import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'
 import request from '@/config/axios'
+import DetailEntryMethods from '@/views/wms/order/components/DetailEntryMethods.vue'
 import type { ItemSkuVO } from '@/api/wms/md/item/sku'
 import ScanButton from '@/views/wms/pda/ScanButton.vue'
 import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'

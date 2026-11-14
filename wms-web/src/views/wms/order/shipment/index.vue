@@ -165,27 +165,7 @@
           <Icon class="mr-5px" icon="ep:refresh" />
           重置
         </el-button>
-        <el-popover popper-class="!p-12px" trigger="click" width="520">
-          <template #reference>
-            <el-button>
-              <Icon class="mr-5px" icon="ep:setting" />
-              表格设置
-            </el-button>
-          </template>
-          <el-checkbox-group
-            v-model="checkedTableColumns"
-            class="grid grid-cols-3 gap-y-14px rounded bg-[var(--el-fill-color-light)] p-16px"
-          >
-            <el-checkbox
-              v-for="column in tableColumnOptions"
-              :key="column.value"
-              class="!h-28px !mr-0 [&_.el-checkbox__label]:font-600 [&_.el-checkbox__label]:text-16px"
-              :label="column.value"
-            >
-              {{ column.label }}
-            </el-checkbox>
-          </el-checkbox-group>
-        </el-popover>
+        <TableColumnSettings v-model="tableColumns" :options="columnSettingsOptions" storage-key="shipment-list" />
         <el-button
           v-hasPermi="['wms:shipment-order:create']"
           plain
@@ -212,6 +192,7 @@
   <!-- 出库单列表 -->
   <ContentWrap>
     <el-table
+      :key="tableColumns.map(item => `${item.key}:${item.show}`).join('|')"
       v-loading="loading"
       cell-class-name="!align-top"
       :data="list"
@@ -256,9 +237,9 @@
           </el-table>
         </template>
       </el-table-column>
+      <template v-for="column in visibleTableColumns" :key="column.key">
       <el-table-column
-        v-if="isTableColumnVisible('no')"
-        fixed="left"
+        v-if="column.key === 'no'"
         label="单号/业务单号"
         width="290"
       >
@@ -275,9 +256,8 @@
         </template>
       </el-table-column>
       <el-table-column
-        v-if="isTableColumnVisible('status')"
+        v-if="column.key === 'status'"
         align="center"
-        fixed="left"
         label="出库状态"
         width="110"
       >
@@ -286,7 +266,7 @@
         </template>
       </el-table-column>
       <el-table-column
-        v-if="isTableColumnVisible('type')"
+        v-if="column.key === 'type'"
         align="center"
         label="出库类型"
         width="120"
@@ -295,13 +275,13 @@
           <dict-tag :type="DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE" :value="scope.row.type" />
         </template>
       </el-table-column>
-      <el-table-column v-if="isTableColumnVisible('warehouse')" label="仓库" min-width="160">
+      <el-table-column v-if="column.key === 'warehouse'" label="仓库" min-width="160">
         <template #default="scope">
           {{ scope.row.warehouseName || '-' }}
         </template>
       </el-table-column>
       <el-table-column
-        v-if="isTableColumnVisible('quantityAmount')"
+        v-if="column.key === 'quantityAmount'"
         label="总数量/总金额(元)"
         min-width="180"
       >
@@ -317,12 +297,12 @@
         </template>
       </el-table-column>
       <el-table-column
-        v-if="isTableColumnVisible('merchant')"
+        v-if="column.key === 'merchant'"
         label="客户"
         min-width="160"
         prop="merchantName"
       />
-      <el-table-column v-if="isTableColumnVisible('operateInfo')" label="操作信息" min-width="280">
+      <el-table-column v-if="column.key === 'operateInfo'" label="操作信息" min-width="280">
         <template #default="scope">
           <div>
             创建：{{ formatNullableDate(scope.row.createTime) }} /
@@ -335,12 +315,12 @@
         </template>
       </el-table-column>
       <el-table-column
-        v-if="isTableColumnVisible('remark')"
+        v-if="column.key === 'remark'"
         label="备注"
         min-width="160"
         prop="remark"
       />
-      <el-table-column align="center" fixed="right" label="操作" width="260" :show-overflow-tooltip="false">
+      <el-table-column v-if="column.key === 'action'" align="center" label="操作" width="260" :show-overflow-tooltip="false">
         <template #default="scope">
           <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 0 8px">
           <ApprovalActions v-if="approvalEnabled || scope.row.status === 1" type="shipment" :id="scope.row.id" :status="scope.row.status" @changed="getList" />
@@ -390,6 +370,7 @@
           </div>
         </template>
       </el-table-column>
+      </template>
     </el-table>
     <!-- 分页 -->
     <Pagination
@@ -408,6 +389,7 @@
 </template>
 
 <script lang="ts" setup>
+import TableColumnSettings from '@/views/wms/order/components/TableColumnSettings.vue'
 import ApprovalActions from '@/views/wms/order/components/ApprovalActions.vue'
 import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(false)
@@ -444,6 +426,7 @@ const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化
 
 type TableColumnKey =
+  | 'action'
   | 'no'
   | 'status'
   | 'type'
@@ -461,18 +444,12 @@ const tableColumnOptions: Array<{ label: string; value: TableColumnKey }> = [
   { label: '数量/金额(元)', value: 'quantityAmount' },
   { label: '客户', value: 'merchant' },
   { label: '操作信息', value: 'operateInfo' },
-  { label: '备注', value: 'remark' }
+  { label: '备注', value: 'remark' },
+  { label: '操作', value: 'action' }
 ]
-const checkedTableColumns = ref<TableColumnKey[]>([
-  'no',
-  'status',
-  'type',
-  'warehouse',
-  'quantityAmount',
-  'merchant',
-  'operateInfo',
-  'remark'
-])
+const columnSettingsOptions = tableColumnOptions.map(item => ({ key: item.value, label: item.label }))
+const tableColumns = ref(columnSettingsOptions.map(item => ({ ...item, show: true })))
+const visibleTableColumns = computed(() => tableColumns.value.filter(item => item.show))
 
 const loading = ref(true) // 列表的加载中
 const list = ref<ShipmentOrderVO[]>([]) // 列表的数据
@@ -504,10 +481,7 @@ const queryParams = reactive(getDefaultQueryParams())
 const exportLoading = ref(false) // 导出的加载中
 const detailMap = reactive<Record<number, ShipmentOrderDetailVO[]>>({}) // 出库单明细数据
 
-/** 判断表格列是否可见 */
-function isTableColumnVisible(column: TableColumnKey) {
-  return checkedTableColumns.value.includes(column)
-}
+
 
 /** 是否允许修改出库单 */
 const canUpdateShipmentOrder = (status?: number) => {

@@ -48,6 +48,7 @@
               <Icon class="mr-5px" icon="ep:refresh" />
               重置
             </el-button>
+            <TableColumnSettings v-model="tableColumns" :options="columnSettingsOptions" storage-key="item-list" />
             <el-button
               v-hasPermi="['wms:item:create']"
               plain
@@ -75,12 +76,14 @@
       <!-- 物品列表 -->
       <ContentWrap>
         <el-table
+      :key="tableColumns.map(item => `${item.key}:${item.show}`).join('|')"
           v-loading="loading"
           :data="list"
           :show-overflow-tooltip="true"
           :span-method="spanMethod"
         >
-          <el-table-column label="物品信息" min-width="220">
+          <template v-for="column in visibleTableColumns" :key="column.key">
+          <el-table-column v-if="column.key === 'item'" prop="itemId" label="物品信息" min-width="220">
             <template #default="scope">
               <div class="text-14px">{{ scope.row.itemName }}</div>
               <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
@@ -94,7 +97,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="规格信息" min-width="180">
+          <el-table-column v-if="column.key === 'sku'" label="规格信息" min-width="180">
             <template #default="scope">
               <div class="text-14px">{{ scope.row.name }}</div>
               <div v-if="scope.row.code" class="text-12px text-gray-500">
@@ -105,7 +108,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="金额(元)" min-width="140">
+          <el-table-column v-if="column.key === 'price'" label="金额(元)" min-width="140">
             <template #default="scope">
               <div v-if="!isNullOrUnDef(scope.row.costPrice)">
                 成本价：{{ formatPrice(scope.row.costPrice) }}
@@ -115,7 +118,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="重量(kg)" min-width="140">
+          <el-table-column v-if="column.key === 'weight'" label="重量(kg)" min-width="140">
             <template #default="scope">
               <div v-if="!isNullOrUnDef(scope.row.netWeight)">
                 净重：{{ formatWeight(scope.row.netWeight) }}
@@ -125,18 +128,18 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="净长/毛长(cm)" min-width="140">
+          <el-table-column v-if="column.key === 'length'" label="净长/毛长(cm)" min-width="140">
             <template #default="scope">
               <div v-if="!isNullOrUnDef(scope.row.netLength)">净长：{{ scope.row.netLength }}</div>
               <div v-if="!isNullOrUnDef(scope.row.grossLength)">毛长：{{ scope.row.grossLength }}</div>
             </template>
           </el-table-column>
-          <el-table-column align="right" label="长宽高(cm)" min-width="180">
+          <el-table-column align="right" v-if="column.key === 'size'" label="长宽高(cm)" min-width="180">
             <template #default="scope">
               {{ formatDimensionText(scope.row.length, scope.row.width, scope.row.height) }}
             </template>
           </el-table-column>
-          <el-table-column align="center" label="操作" width="120" :show-overflow-tooltip="false">
+          <el-table-column v-if="column.key === 'action'" align="center" label="操作" prop="itemOperation" width="120" :show-overflow-tooltip="false">
             <template #default="scope">
               <el-button
                 v-hasPermi="['wms:item:update']"
@@ -156,6 +159,7 @@
               </el-button>
             </template>
           </el-table-column>
+          </template>
         </el-table>
         <!-- 分页 -->
         <Pagination
@@ -175,6 +179,7 @@
 
 <script lang="ts" setup>
 import download from '@/utils/download'
+import TableColumnSettings from '@/views/wms/order/components/TableColumnSettings.vue'
 import { ItemApi, ItemVO } from '@/api/wms/md/item'
 import { ItemSkuVO } from '@/api/wms/md/item/sku'
 import ItemForm from './ItemForm.vue'
@@ -186,6 +191,9 @@ import { formatDimensionText, formatPrice, formatWeight } from '@/views/wms/util
 
 /** WMS 物品管理 */
 defineOptions({ name: 'WmsItem' })
+const columnSettingsOptions = [ { key: 'item', label: '物品信息' }, { key: 'sku', label: '规格信息' }, { key: 'price', label: '金额' }, { key: 'weight', label: '重量' }, { key: 'length', label: '净长/毛长' }, { key: 'size', label: '长宽高' }, { key: 'action', label: '操作' } ]
+const tableColumns = ref(columnSettingsOptions.map(item => ({ ...item, show: true })))
+const visibleTableColumns = computed(() => tableColumns.value.filter(item => item.show))
 const scanRulesRef = ref<InstanceType<typeof ScanRules>>()
 
 const message = useMessage() // 消息弹窗
@@ -298,8 +306,8 @@ const handleExport = async () => {
 }
 
 /** 合并物品维度的重复单元格 */
-const spanMethod = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
-  if (![0, 5].includes(columnIndex)) {
+const spanMethod = ({ rowIndex, column }: { rowIndex: number; column: { property?: string } }) => {
+  if (!['itemId', 'itemOperation'].includes(column.property || '')) {
     return { rowspan: 1, colspan: 1 }
   }
   const row = list.value[rowIndex]

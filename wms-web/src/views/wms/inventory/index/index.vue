@@ -66,6 +66,7 @@
           <Icon class="mr-5px" icon="ep:refresh" />
           重置
         </el-button>
+        <TableColumnSettings v-model="tableColumns" :options="columnSettingsOptions" storage-key="inventory-list" />
       </el-form-item>
     </el-form>
   </ContentWrap>
@@ -82,6 +83,7 @@
       </div>
     </div>
     <el-table
+      :key="`${queryParams.type}:${tableColumns.map(item => `${item.key}:${item.show}`).join('|')}`"
       v-loading="loading"
       cell-class-name="!align-top"
       :data="list"
@@ -89,13 +91,13 @@
       :span-method="spanMethod"
       border
     >
-      <template v-if="warehouseDimensionList.includes(queryParams.type)">
-        <el-table-column label="仓库" min-width="160" prop="warehouseId">
+      <template v-for="column in visibleTableColumns" :key="column.key">
+        <el-table-column v-if="column.key === 'warehouse'" label="仓库" min-width="160" :prop="warehouseDimensionList.includes(queryParams.type) ? 'warehouseId' : 'skuWarehouseId'">
           <template #default="scope">
             {{ scope.row.warehouseName || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="商品信息" min-width="240" prop="warehouseItemId">
+        <el-table-column v-if="column.key === 'item'" label="商品信息" min-width="240" :prop="warehouseDimensionList.includes(queryParams.type) ? 'warehouseItemId' : 'itemId'">
           <template #default="scope">
             <div>{{ scope.row.itemName || '-' }}</div>
             <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
@@ -103,7 +105,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="规格信息" min-width="220" prop="skuId">
+        <el-table-column v-if="column.key === 'sku'" label="规格信息" min-width="220" :prop="'skuId'">
           <template #default="scope">
             <div>{{ scope.row.skuName || '-' }}</div>
             <div v-if="scope.row.skuCode" class="text-12px text-gray-500">
@@ -111,53 +113,30 @@
             </div>
           </template>
         </el-table-column>
-      </template>
-      <template v-else>
-        <el-table-column label="商品信息" min-width="240" prop="itemId">
-          <template #default="scope">
-            <div>{{ scope.row.itemName || '-' }}</div>
-            <div v-if="scope.row.itemCode" class="text-12px text-gray-500">
-              商品编号：{{ scope.row.itemCode }}
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="规格信息" min-width="220" prop="skuId">
-          <template #default="scope">
-            <div>{{ scope.row.skuName || '-' }}</div>
-            <div v-if="scope.row.skuCode" class="text-12px text-gray-500">
-              规格编号：{{ scope.row.skuCode }}
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="仓库" min-width="160" prop="skuWarehouseId">
-          <template #default="scope">
-            {{ scope.row.warehouseName || '-' }}
-          </template>
-        </el-table-column>
-      </template>
-      <el-table-column align="right" label="库存" min-width="130" prop="quantity">
+      <el-table-column v-if="column.key === 'quantity'" align="right" label="库存" min-width="130" prop="quantity">
         <template #default="scope">
           {{ formatQuantity(scope.row.quantity) }}
         </template>
       </el-table-column>
-      <el-table-column label="批次库存" width="110">
+      <el-table-column v-if="column.key === 'batch'" label="批次库存" width="110">
         <template #default="scope">
           <el-button link type="primary" @click="showBatches(scope.row)">查看批次</el-button>
         </template>
       </el-table-column>
-      <el-table-column label="库位库存" width="110">
+      <el-table-column v-if="column.key === 'location'" label="库位库存" width="110">
         <template #default="scope">
           <el-button link type="primary" @click="showLocations(scope.row)">查看库位</el-button>
         </template>
       </el-table-column>
-      <el-table-column label="到货库存" width="110">
+      <el-table-column v-if="column.key === 'arrival'" label="到货库存" width="110">
         <template #default="scope"><el-button link type="primary" @click="showArrivals(scope.row)">查看到货</el-button></template>
       </el-table-column>
-      <el-table-column label="序列号" width="110">
+      <el-table-column v-if="column.key === 'serial'" label="序列号" width="110">
         <template #default="scope">
           <el-button link type="primary" @click="openSerial(scope.row)">查询序列号</el-button>
         </template>
       </el-table-column>
+      </template>
     </el-table>
     <!-- 分页 -->
     <Pagination
@@ -246,6 +225,7 @@
 </template>
 
 <script lang="ts" setup>
+import TableColumnSettings from '@/views/wms/order/components/TableColumnSettings.vue'
 import { InventoryApi, InventoryVO } from '@/api/wms/inventory'
 import request from '@/config/axios'
 import WarehouseSelect from '@/views/wms/md/warehouse/components/WarehouseSelect.vue'
@@ -257,6 +237,9 @@ import { checkPermi } from '@/utils/permission'
 
 /** WMS 库存统计 */
 defineOptions({ name: 'WmsInventory' })
+const columnSettingsOptions = [ { key: 'warehouse', label: '仓库' }, { key: 'item', label: '物品信息' }, { key: 'sku', label: '规格信息' }, { key: 'quantity', label: '库存' }, { key: 'batch', label: '批次库存' }, { key: 'location', label: '库位库存' }, { key: 'arrival', label: '到货库存' }, { key: 'serial', label: '序列号' } ]
+const tableColumns = ref(columnSettingsOptions.map(item => ({ ...item, show: true })))
+const visibleTableColumns = computed(() => tableColumns.value.filter(item => item.show))
 
 const INVENTORY_DIMENSION = {
   WAREHOUSE: 'warehouse',

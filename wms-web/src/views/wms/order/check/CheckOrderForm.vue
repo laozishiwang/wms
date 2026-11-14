@@ -65,8 +65,8 @@
         </el-col>
       </el-row>
 
-      <div class="mb-12px flex flex-wrap items-center gap-12px">
-        <span class="text-14px font-bold">盘库明细</span>
+      <DetailEntryMethods title="盘库明细">
+        <template #select>
         <el-tooltip content="请先选择仓库" :disabled="!!formData.warehouseId" placement="top">
           <span>
             <el-button
@@ -89,6 +89,8 @@
             </el-button>
           </span>
         </el-tooltip>
+        </template>
+        <template #scan>
         <el-button :disabled="!formData.details?.length || formLoading || scanLoading" plain type="primary" @click="startScan">{{ scanReady ? '重新清零' : '清零并开始扫码' }}</el-button>
         <template v-if="scanReady">
           <ScanItemScope v-model="scanSku" />
@@ -96,7 +98,9 @@
           <el-button :loading="scanLoading" plain type="primary" @click="scanCount">扫码录入</el-button>
           <ScanButton label="连续扫码" continuous :process-scan="queueScan" />
         </template>
-      </div>
+        </template>
+      </DetailEntryMethods>
+
       <el-table
         :data="formData.details"
         :summary-method="getDetailSummaries"
@@ -232,6 +236,7 @@
 
 <script lang="ts" setup>
 import request from '@/config/axios'
+import DetailEntryMethods from '@/views/wms/order/components/DetailEntryMethods.vue'
 import ScanButton from '@/views/wms/pda/ScanButton.vue'
 import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'

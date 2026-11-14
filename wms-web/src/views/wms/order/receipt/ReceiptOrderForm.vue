@@ -65,8 +65,9 @@
         </el-col>
       </el-row>
 
-      <div class="mb-12px flex flex-wrap items-center gap-12px">
-        <span class="text-14px font-bold">入库明细</span>
+      <DetailEntryMethods title="入库明细">
+        <template #settings><el-button plain @click="columnSettingsRef?.open()">字段排序</el-button></template>
+        <template #select>
         <el-tooltip content="请先选择仓库" :disabled="!!formData.warehouseId" placement="top">
           <span>
             <el-button
@@ -80,16 +81,16 @@
             </el-button>
           </span>
         </el-tooltip>
+        </template>
+        <template #import><el-button plain @click="downloadImportTemplate">下载导入模板</el-button><el-button plain :disabled="!formData.warehouseId" @click="importFileRef?.click()">导入明细</el-button><input ref="importFileRef" type="file" accept=".xls,.xlsx" hidden @change="importDetails" /></template>
+        <template #scan>
         <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
         <ScanItemScope v-model="scanSku" />
         <el-button :loading="scanLoading" :disabled="!formData.warehouseId" plain type="primary" @click="addScannedItem">扫码添加</el-button>
         <ScanButton label="连续扫码" continuous :disabled="!formData.warehouseId" :process-scan="queueScan" />
-        <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
-        <el-button plain @click="downloadImportTemplate">下载导入模板</el-button>
-        <el-button plain :disabled="!formData.warehouseId" @click="importFileRef?.click()">导入明细</el-button>
-        <span class="text-12px text-gray-500">模板以规格编号匹配物品；多个序列号用逗号或换行分隔</span>
-        <input ref="importFileRef" type="file" accept=".xls,.xlsx" hidden @change="importDetails" />
-      </div>
+        </template>
+      </DetailEntryMethods>
+
       <el-table
         :key="columnOrder.join('|')"
         :data="formData.details"
@@ -262,6 +263,7 @@
 
 <script lang="ts" setup>
 import request from '@/config/axios'
+import DetailEntryMethods from '@/views/wms/order/components/DetailEntryMethods.vue'
 import ScanButton from '@/views/wms/pda/ScanButton.vue'
 import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import download from '@/utils/download'
