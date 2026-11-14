@@ -59,7 +59,8 @@ public class WmsOrderDetailQueryController {
         String arrivalId = rangeParams.get("arrivalId");
         if (arrivalId != null && !arrivalId.isBlank()) { where.append(receipt ? " AND d.id=:arrivalId" : " AND COALESCE(d.arrival_id, 0)=:arrivalId"); p.addValue("arrivalId", Long.valueOf(arrivalId)); }
         for (String dateField : List.of("productionDate", "expirationDate")) {
-            String column = dateField.equals("productionDate") ? "d.production_date" : "d.expiration_date";
+            String name = dateField.equals("productionDate") ? "production_date" : "expiration_date";
+            String column = receipt ? "d." + name : "COALESCE(d." + name + ", a." + name + ")";
             for (String bound : List.of("From", "To")) {
                 String key = dateField + bound, value = rangeParams.get(key);
                 if (value != null && !value.isBlank()) { where.append(" AND ").append(column).append(bound.equals("From") ? " >= :" : " <= :").append(key); p.addValue(key, value); }
@@ -94,7 +95,9 @@ public class WmsOrderDetailQueryController {
         }
         Long total = jdbc.queryForObject("SELECT COUNT(*)"+where,p,Long.class);
         int size=Math.min(Math.max(pageSize,1),100); p.addValue("limit",size).addValue("offset",(long)(Math.max(pageNo,1)-1)*size);
-        String select = "SELECT d.id,d.order_id AS orderId,o.no,o.type,o.status,o.order_time AS orderTime,d.warehouse_id AS warehouseId,w.name AS warehouseName,s.code AS skuCode,s.name AS skuName,i.name AS itemName,i.code AS itemCode,i.unit AS itemUnit,m.name AS merchantName,d.location_id AS locationId,loc.code AS locationCode,loc.name AS locationName,d.batch_no AS batchNo," + arrival + ".pallet_no AS palletNo,"+arrival+".box_no AS boxNo,"+arrival+".roll_no AS rollNo,"+(receipt ? "d.id" : "d.arrival_id")+" AS arrivalId,d.quantity,d.price,d.total_price AS totalPrice,d.serial_nos AS serialNos,d.production_date AS productionDate,d.expiration_date AS expirationDate,o.biz_order_no AS bizOrderNo,o.remark,"+arrival+".net_length AS netLength,"+arrival+".gross_length AS grossLength,"+arrival+".net_weight AS netWeight,"+arrival+".gross_weight AS grossWeight,"+arrival+".length AS length,"+arrival+".width AS width,"+arrival+".height AS height,"+arrival+".sales_price AS salesPrice,"+arrival+".price AS arrivalCostPrice";
+        String productionDate = receipt ? "d.production_date" : "COALESCE(d.production_date, a.production_date)";
+        String expirationDate = receipt ? "d.expiration_date" : "COALESCE(d.expiration_date, a.expiration_date)";
+        String select = "SELECT d.id,d.order_id AS orderId,o.no,o.type,o.status,o.order_time AS orderTime,d.warehouse_id AS warehouseId,w.name AS warehouseName,s.code AS skuCode,s.name AS skuName,i.name AS itemName,i.code AS itemCode,i.unit AS itemUnit,m.name AS merchantName,d.location_id AS locationId,loc.code AS locationCode,loc.name AS locationName,d.batch_no AS batchNo," + arrival + ".pallet_no AS palletNo,"+arrival+".box_no AS boxNo,"+arrival+".roll_no AS rollNo,"+(receipt ? "d.id" : "d.arrival_id")+" AS arrivalId,d.quantity,d.price,d.total_price AS totalPrice,d.serial_nos AS serialNos,"+productionDate+" AS productionDate,"+expirationDate+" AS expirationDate,o.biz_order_no AS bizOrderNo,o.remark,"+arrival+".net_length AS netLength,"+arrival+".gross_length AS grossLength,"+arrival+".net_weight AS netWeight,"+arrival+".gross_weight AS grossWeight,"+arrival+".length AS length,"+arrival+".width AS width,"+arrival+".height AS height,"+arrival+".sales_price AS salesPrice,"+arrival+".price AS arrivalCostPrice";
         return CommonResult.success(new PageResult<>(jdbc.queryForList(select+where+" ORDER BY d.id DESC LIMIT :limit OFFSET :offset",p), total));
     }
 }

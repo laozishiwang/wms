@@ -6,8 +6,7 @@ import { WarehouseApi, type WarehouseVO } from '@/api/wms/md/warehouse'
 import request from '@/config/axios'
 import type { ItemSkuVO } from '@/api/wms/md/item/sku'
 import BatchSelect from '@/views/wms/inventory/components/BatchSelect.vue'
-import BatchLocationSelect from '@/views/wms/inventory/components/BatchLocationSelect.vue'
-import InboundLocationSelect from '@/views/wms/inventory/components/InboundLocationSelect.vue'
+import PlacePicker from './PlacePicker.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
@@ -59,9 +58,9 @@ const save = async () => {
     <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
     <div v-if="sku" class="detail-panel"><p>移库信息 · {{ sku.name }}（{{ sku.code }}）</p>
       <p>批次</p><BatchSelect v-model="row.batchNo" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" @update:model-value="row.sourceLocationId = undefined; row.arrivalId = undefined" />
-      <p>来源库位（留空为未分配）</p><BatchLocationSelect v-model="row.sourceLocationId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :batch-no="row.batchNo" @update:model-value="row.arrivalId = undefined" />
+      <p>来源位置</p><PlacePicker v-model="row.sourceLocationId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :batch-no="row.batchNo" stock-only @update:model-value="row.arrivalId = undefined" />
       <p>到货记录</p><ArrivalSelect v-model="row.arrivalId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :location-id="row.sourceLocationId" :batch-no="row.batchNo" />
-      <p>目标库位（留空为未分配）</p><InboundLocationSelect v-model="row.targetLocationId" :warehouse-id="target" />
+      <p>目标位置</p><PlacePicker v-model="row.targetLocationId" :warehouse-id="target" />
       <p>数量</p><el-input-number v-model="row.quantity" :min="0.001" :precision="3" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
     </div><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
