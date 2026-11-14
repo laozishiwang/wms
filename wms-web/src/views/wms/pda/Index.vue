@@ -212,6 +212,7 @@ const orderApis = {
   check: { page: CheckOrderApi.getCheckOrderPage, details: CheckOrderApi.getCheckOrderDetailListByOrderId, complete: CheckOrderApi.completeCheckOrder }
 }
 const load = async () => {
+  if (tab.value === 'inventory') inventoryExpanded.value = ''
   loading.value = true
   try {
     const params = { pageNo: page.value, pageSize: 20, ...(tab.value === 'inventory' ? { type: 'warehouse', skuCode: keyword.value || undefined } : { no: keyword.value || undefined, status: listStatus.value, orderTime: listDates.value?.length === 2 ? listDates.value : undefined }), ...(warehouseId.value ? (tab.value === 'movement' ? { sourceWarehouseId: warehouseId.value } : { warehouseId: warehouseId.value }) : {}) }
