@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import cn.iocoder.yudao.module.wms.dal.dataobject.md.item.WmsItemSkuDO;
 import cn.iocoder.yudao.module.wms.dal.dataobject.md.warehouse.WmsWarehouseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -76,10 +77,12 @@ public class WmsShipmentOrderDetailDO extends BaseDO {
     /** 本行序列号。 */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> serialNos;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long locationId;
     @com.baomidou.mybatisplus.annotation.TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
     private Long arrivalId;
     /** 批次号；为空表示未分配批次。 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String batchNo;
     /** 生产日期。 */
     private LocalDateTime productionDate;

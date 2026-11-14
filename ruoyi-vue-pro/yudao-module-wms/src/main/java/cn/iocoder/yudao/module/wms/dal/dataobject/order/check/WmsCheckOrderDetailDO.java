@@ -76,6 +76,7 @@ public class WmsCheckOrderDetailDO extends BaseDO {
     private Long locationId;
     @com.baomidou.mybatisplus.annotation.TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
     private Long arrivalId;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String batchNo;
     private LocalDateTime productionDate;
     private LocalDateTime expirationDate;

@@ -90,6 +90,7 @@ public class WmsMovementOrderDetailDO extends BaseDO {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long targetLocationId;
 
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String batchNo;
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> serialNos;

@@ -77,12 +77,16 @@ public class WmsReceiptOrderDetailDO extends BaseDO {
     /** 本行序列号。 */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> serialNos;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long locationId;
     /** 批次号；为空表示未分配批次。 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String batchNo;
     /** 生产日期。 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime productionDate;
     /** 到期日期。 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime expirationDate;
 
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String palletNo;

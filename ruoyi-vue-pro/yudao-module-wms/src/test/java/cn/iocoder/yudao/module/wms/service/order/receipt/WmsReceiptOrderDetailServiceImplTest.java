@@ -51,6 +51,21 @@ public class WmsReceiptOrderDetailServiceImplTest extends BaseDbUnitTest {
     }
 
     @Test
+    public void testUpdateClearsOptionalLocationAndBatch() {
+        WmsReceiptOrderDetailDO detail = createReceiptOrderDetail(10L, 1001L, "2.00");
+        detail.setLocationId(901L);
+        detail.setBatchNo("LOT-1");
+        detail.setProductionDate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        receiptOrderDetailMapper.insert(detail);
+        WmsReceiptOrderDetailSaveReqVO update = createReceiptOrderDetailReqVO(detail.getId(), 1001L, "2.00");
+        receiptOrderDetailService.updateReceiptOrderDetailList(10L, createReceiptOrderReqVO(update));
+        WmsReceiptOrderDetailDO saved = receiptOrderDetailMapper.selectById(detail.getId());
+        assertNull(saved.getLocationId());
+        assertNull(saved.getBatchNo());
+        assertNull(saved.getProductionDate());
+    }
+
+    @Test
     public void testCreateReceiptOrderDetailList_success() {
         // mock 数据
         Long orderId = 10L;
