@@ -89,8 +89,10 @@
                 <el-button @click="scope.row.barCode = generateWmsCode()">生成</el-button>
               </template>
             </el-input>
-            <el-button v-if="scope.row.id" link type="primary" @click="openBarcodes(scope.row)">管理附加条码</el-button>
-            <el-button v-if="scope.row.id" link type="primary" @click="scanRulesRef?.open(scope.row)">设置二维码</el-button>
+            <div class="mt-5px flex flex-wrap gap-5px">
+              <el-button type="primary" plain :loading="formLoading" @click="openSkuSettings(scope.row, 'barcode')">管理附加条码</el-button>
+              <el-button type="primary" plain :loading="formLoading" @click="openSkuSettings(scope.row, 'qr')">设置二维码</el-button>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="长/宽/高(cm)" width="210">
@@ -312,6 +314,37 @@ const submitForm = async () => {
   } finally {
     formLoading.value = false
   }
+}
+
+const openSkuSettings = async (sku: ItemSkuVO, kind: 'barcode' | 'qr') => {
+  let current: ItemSkuVO | undefined = sku
+  if (!current.id) {
+    await formRef.value.validate()
+    const index = formData.value.skus?.indexOf(sku) ?? -1
+    if (index < 0) return
+    if (!sku.code?.trim() || formData.value.skus?.filter(item => item.code === sku.code).length !== 1) { message.warning('请先填写唯一的规格编号'); return }
+    const skuCode = sku.code
+    await ElMessageBox.confirm('需要先保存当前物品和规格，再进行设置。保存后关闭窗口不会撤销已保存的数据。', '保存物品', { confirmButtonText: '保存并继续', cancelButtonText: '取消', type: 'info' })
+    formLoading.value = true
+    try {
+      if (formType.value === 'create') {
+        const id: number = await ItemApi.createItem(formData.value)
+        formData.value.id = id
+        formType.value = 'update'
+        emit('success')
+      } else {
+        await ItemApi.updateItem(formData.value)
+        emit('success')
+      }
+      const item = await ItemApi.getItem(formData.value.id!)
+      formData.value = item
+      const matches = item.skus?.filter((entry: ItemSkuVO) => entry.code === skuCode) || []
+      current = matches.length === 1 ? matches[0] : undefined
+      if (!current?.id) { message.error('规格已保存，请重新打开物品后设置'); return }
+    } finally { formLoading.value = false }
+  }
+  if (kind === 'barcode') await openBarcodes(current)
+  else await scanRulesRef.value?.open(current)
 }
 
 /** 重置表单 */
