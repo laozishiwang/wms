@@ -65,7 +65,7 @@
         </el-col>
       </el-row>
 
-      <div class="mb-12px flex items-center justify-between">
+      <div class="mb-12px flex flex-wrap items-center gap-12px">
         <span class="text-14px font-bold">盘库明细</span>
         <el-tooltip content="请先选择仓库" :disabled="!!formData.warehouseId" placement="top">
           <span>
@@ -89,6 +89,12 @@
             </el-button>
           </span>
         </el-tooltip>
+        <el-button :disabled="!formData.details?.length || formLoading || scanLoading" plain type="primary" @click="startScan">{{ scanReady ? '重新清零' : '清零并开始扫码' }}</el-button>
+        <template v-if="scanReady">
+          <ScanItemScope v-model="scanSku" />
+          <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描物品码或序列号" @keyup.enter="scanCount" />
+          <el-button :loading="scanLoading" plain type="primary" @click="scanCount">扫码录入</el-button>
+        </template>
       </div>
       <el-table
         :data="formData.details"
@@ -191,7 +197,7 @@
           <el-button
             v-if="isSavedPrepareOrder && !approvalEnabled"
             v-hasPermi="['wms:check-order:complete']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="success"
             @click="handleComplete"
           >
@@ -200,7 +206,7 @@
           <el-button
             v-if="isSavedPrepareOrder"
             v-hasPermi="['wms:check-order:cancel']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="danger"
             @click="handleCancel"
           >
@@ -210,7 +216,7 @@
         <div>
           <el-button
             v-if="isPrepareOrder"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="primary"
             @click="submitForm"
           >
@@ -225,6 +231,8 @@
 
 <script lang="ts" setup>
 import request from '@/config/axios'
+import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
+import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'
 import { checkPermi } from '@/utils/permission'
 import { placePath, type StoragePlace } from '@/views/wms/pda/place'
 import { ApprovalApi } from '@/api/wms/approval'
@@ -264,6 +272,11 @@ defineOptions({ name: 'WmsCheckOrderForm' })
 
 const { t } = useI18n()
 const message = useMessage()
+const scanValue = ref('')
+const scanSku = ref<ItemSkuVO>()
+const scanReady = ref(false)
+const scanLoading = ref(false)
+let scanFormVersion = 0
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -357,6 +370,10 @@ const isSavedPrepareOrder = computed(
 
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
+  scanFormVersion++
+  scanReady.value = false
+  scanValue.value = ''
+  scanSku.value = undefined
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   formType.value = type
   if (type === 'create') {
@@ -472,8 +489,10 @@ const handleImportAllInventory = async () => {
   }
   formLoading.value = true
   try {
+    scanReady.value = false
     const inventories = await loadWarehouseInventoryList()
     formData.value.details = (await Promise.all(inventories.map(buildInventoryDetails))).flat()
+    scanReady.value = false
   } finally {
     formLoading.value = false
   }
@@ -493,6 +512,7 @@ const handleSelectSku = async (skus: ItemSkuVO[]) => {
   if (!skus.length) {
     return
   }
+  scanReady.value = false
   formLoading.value = true
   try {
     const warehouseInventoryMap = await getWarehouseInventoryMap()
@@ -559,7 +579,51 @@ function buildZeroInventoryDetail(sku: ItemSkuVO): CheckOrderFormDetail {
 }
 
 const handleDeleteDetail = (index: number) => {
+  scanReady.value = false
   formData.value.details?.splice(index, 1)
+}
+
+const startScan = async () => {
+  if (scanLoading.value || !formData.value.details?.length) return
+  await message.confirm('将清空整张单据的实盘数量和序列号，然后开始扫码。是否继续？')
+  for (const row of formData.value.details) { row.checkQuantity = 0; row.actualSerialNos = []; row.actualPrice = 0 }
+  scanReady.value = true
+  scanValue.value = ''
+}
+
+const scanCount = async () => {
+  const value = scanValue.value.trim(), warehouseId = formData.value.warehouseId, scopeId = scanSku.value?.id, version = scanFormVersion
+  if (!value || !warehouseId || !scanReady.value || scanLoading.value) return
+  scanLoading.value = true
+  try {
+    const scoped = () => (formData.value.details || []).filter(row => scopeId == null || row.skuId === scopeId)
+    const serial = scoped().filter(row => row.bookSerialNos?.includes(value) || row.actualSerialNos?.includes(value))
+    if (serial.length > 1) { message.warning('序列号对应多条明细，请手动核对'); return }
+    if (serial.length === 1) {
+      if (serial[0].actualSerialNos?.includes(value)) { message.warning('该序列号已盘点'); return }
+      setSerials(serial[0], [...(serial[0].actualSerialNos || []), value])
+    } else {
+      let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
+      let parsed: Record<string, string> | null = null
+      if (!skus.length) {
+        parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value, skuId: scopeId } })
+        if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
+      }
+      if (skus.length !== 1 || !skus[0].id || (scopeId != null && skus[0].id !== scopeId)) { message.warning('未找到唯一物品或与指定物品不一致'); return }
+      const quantity = parsed?.quantity ? Number(parsed.quantity) : 1
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
+      const balances = parsed ? await listArrivalBalances(warehouseId, skus[0].id) : []
+      if (!dialogVisible.value || version !== scanFormVersion || scopeId !== scanSku.value?.id || warehouseId !== formData.value.warehouseId || !scanReady.value) { message.warning('盘点条件已变更，请重新扫码'); return }
+      const rows = scoped().filter(row => row.skuId === skus[0].id && (!parsed || balances.some(stock => (stock.arrivalId ?? 0) === row.arrivalId && (stock.locationId ?? undefined) === row.locationId && (stock.batchNo || '') === (row.batchNo || '') && matchesScanAttributes({ ...stock }, parsed!))))
+      if (rows.length !== 1) { message.warning(rows.length ? '匹配多条盘点明细，请手动填写' : '没有匹配的盘点明细'); return }
+      const row = rows[0]
+      if (row.bookSerialNos?.length) { message.warning('该明细含序列号，请扫描序列号或手动填写'); return }
+      row.checkQuantity = Number((Number(row.checkQuantity || 0) + quantity).toFixed(2))
+      handleDetailCheckQuantityChange(row)
+    }
+    scanValue.value = ''
+    message.success('盘点成功')
+  } finally { scanLoading.value = false }
 }
 
 const handleDetailCheckQuantityChange = (detail: CheckOrderFormDetail) => {
