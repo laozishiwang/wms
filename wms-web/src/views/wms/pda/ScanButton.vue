@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-const props = withDefaults(defineProps<{ variant?: 'compact' | 'card'; label?: string; continuous?: boolean; disabled?: boolean; processScan?: (value: string) => Promise<{ ok: boolean; message: string }> }>(), { variant: 'compact', label: '扫码', continuous: false, disabled: false })
-const emit = defineEmits<{ scan: [value: string] }>()
+const props = withDefaults(defineProps<{ variant?: 'compact' | 'card'; label?: string; continuous?: boolean; disabled?: boolean; processScan?: (value: string) => Promise<{ ok: boolean; message: string; bindable?: boolean }> }>(), { variant: 'compact', label: '扫码', continuous: false, disabled: false })
+const emit = defineEmits<{ scan: [value: string]; bind: [value: string] }>()
 const visible = ref(false), text = ref(''), active = ref(false), video = ref<HTMLVideoElement>()
 const input = ref<{ focus: () => void }>()
 let stream: MediaStream | undefined, timer: number | undefined
@@ -9,7 +9,8 @@ let scanner: { stop: () => void } | undefined
 let cameraRequest = 0
 let lastDetected = '', lastSeenAt = 0
 const successCount = ref(0), failureCount = ref(0), pendingCount = ref(0)
-const lastResult = ref<{ ok: boolean; message: string }>()
+const lastResult = ref<{ ok: boolean; message: string; bindable?: boolean }>()
+const lastValue = ref('')
 const soundEnabled = ref(true)
 let audio: AudioContext | undefined
 let session = 0
@@ -31,6 +32,7 @@ const submit = () => {
     props.processScan(value).then((result) => {
       if (current !== session) return
       lastResult.value = result
+      lastValue.value = value
       if (result.ok) successCount.value++; else failureCount.value++
       beep(result.ok)
     }).finally(() => { if (current === session) pendingCount.value-- })
@@ -72,6 +74,7 @@ onBeforeUnmount(() => { stop(); audio?.close() })
     <div class="scan-intro"><span class="scan-icon" aria-hidden="true">⌗</span><div><strong>扫描条码或二维码</strong><p>使用 PDA 扫码枪，或手动输入后确认</p></div></div>
     <el-input ref="input" v-model="text" placeholder="扫描或输入条码" @keydown.enter.prevent.stop="submit" />
     <div v-if="continuous && lastResult" class="scan-result" :class="{ failed: !lastResult.ok }" role="status">{{ lastResult.message }}</div>
+    <el-button v-if="lastResult?.bindable" :disabled="pendingCount > 0" link type="primary" @click="visible = false; emit('bind', lastValue)">绑定已有物品</el-button>
     <p v-if="!supported">当前地址无法启用摄像头，请使用扫码枪或 HTTPS 地址。</p>
     <div v-else><el-button v-if="!active" native-type="button" @click="camera">打开摄像头扫码</el-button><el-button v-else native-type="button" @click="stop">关闭摄像头</el-button><video v-if="active" ref="video" playsinline muted class="scan-video"></video></div>
     <template #footer><div v-if="continuous" class="scan-summary"><span>成功 {{ successCount }} · 失败 {{ failureCount }}<template v-if="pendingCount"> · 处理中 {{ pendingCount }}</template></span><el-switch v-model="soundEnabled" active-text="提示音" /></div><el-button native-type="button" :disabled="pendingCount > 0" @click="visible = false">{{ continuous ? '完成扫描' : '取消' }}</el-button><el-button v-if="!continuous || text" native-type="button" type="primary" @click="submit">确认</el-button></template>

@@ -151,6 +151,15 @@ public class WmsItemSkuServiceImpl implements WmsItemSkuService {
         return itemSkuMapper.selectExactCodeOrBarcode(value);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void bindBarcode(Long id, String barcode) {
+        WmsItemSkuDO sku = validateItemSkuExists(id);
+        if (sku.getBarCode() != null && !sku.getBarCode().isBlank()) throw exception(ITEM_SKU_BARCODE_ALREADY_SET);
+        if (!itemSkuMapper.selectExactCodeOrBarcode(barcode).isEmpty()) throw exception(ITEM_SKU_BARCODE_IN_USE);
+        if (itemSkuMapper.bindEmptyBarcode(id, barcode) != 1) throw exception(ITEM_SKU_BARCODE_ALREADY_SET);
+    }
+
     private void validateItemSkuList(List<WmsItemSkuSaveReqVO> skus) {
         // 校验至少存在一个商品 SKU
         if (CollUtil.isEmpty(skus)) {

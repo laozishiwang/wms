@@ -22,4 +22,15 @@ class WmsItemSkuExactTest extends BaseDbUnitTest {
         mapper.insert(WmsItemSkuDO.builder().name("ambiguous").itemId(1L).code("BAR").build());
         assertEquals(2, mapper.selectExactCodeOrBarcode("BAR").size());
     }
+
+    @Test
+    void bindOnlyUpdatesEmptyBarcodeOnSelectedSku() {
+        WmsItemSkuDO first = WmsItemSkuDO.builder().name("first").itemId(1L).code("A").build();
+        WmsItemSkuDO second = WmsItemSkuDO.builder().name("second").itemId(1L).code("B").barCode("OLD").build();
+        mapper.insert(first); mapper.insert(second);
+        assertEquals(1, mapper.bindEmptyBarcode(first.getId(), "NEW"));
+        assertEquals("NEW", mapper.selectById(first.getId()).getBarCode());
+        assertEquals(0, mapper.bindEmptyBarcode(second.getId(), "OTHER"));
+        assertEquals("OLD", mapper.selectById(second.getId()).getBarCode());
+    }
 }

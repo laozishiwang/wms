@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.wms.controller.admin.md.item.vo.sku.WmsItemSkuPag
 import cn.iocoder.yudao.module.wms.dal.dataobject.md.item.WmsItemDO;
 import cn.iocoder.yudao.module.wms.dal.dataobject.md.item.WmsItemSkuDO;
 import org.apache.ibatis.annotations.Mapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -21,6 +22,12 @@ import java.util.List;
  */
 @Mapper
 public interface WmsItemSkuMapper extends BaseMapperX<WmsItemSkuDO> {
+
+    default int bindEmptyBarcode(Long id, String barcode) {
+        return update(null, Wrappers.<WmsItemSkuDO>lambdaUpdate().eq(WmsItemSkuDO::getId, id)
+                .and(q -> q.isNull(WmsItemSkuDO::getBarCode).or().eq(WmsItemSkuDO::getBarCode, ""))
+                .set(WmsItemSkuDO::getBarCode, barcode));
+    }
 
     default List<WmsItemSkuDO> selectExactCodeOrBarcode(String value) {
         return selectList(new LambdaQueryWrapperX<WmsItemSkuDO>()

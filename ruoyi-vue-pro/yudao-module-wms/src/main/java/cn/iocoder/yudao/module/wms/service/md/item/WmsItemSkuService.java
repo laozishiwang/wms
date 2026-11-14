@@ -95,6 +95,8 @@ public interface WmsItemSkuService {
 
     List<WmsItemSkuDO> getItemSkuExact(String value);
 
+    void bindBarcode(Long id, String barcode);
+
     /**
      * 按编号集合获得 SKU Map
      *

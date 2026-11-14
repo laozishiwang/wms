@@ -10,6 +10,7 @@ import { applyCountScan } from './count-scan'
 import MerchantSelect from '@/views/wms/md/merchant/components/MerchantSelect.vue'
 import ScanButton from './ScanButton.vue'
 import CheckCreate from './CheckCreate.vue'
+import SkuPicker from './SkuPicker.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import BatchSelect from '@/views/wms/inventory/components/BatchSelect.vue'
 import { listArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
@@ -156,6 +157,16 @@ watch(creatingReceipt, (creating) => {
 })
 const receiptScan = ref('')
 const skuPickerOpen = ref(false)
+const barcodePickerOpen = ref(false)
+const unboundBarcode = ref('')
+const bindScannedBarcode = (code: string) => { unboundBarcode.value = code; barcodePickerOpen.value = true }
+const confirmBarcodeSku = async (sku: ItemSkuVO) => {
+  if (!sku.id) return
+  await ElMessageBox.confirm(`将条码 ${unboundBarcode.value} 绑定到 ${sku.itemName || ''} ${sku.name || ''}？`, '绑定条码', { type: 'info' })
+  await ItemSkuApi.bindBarcode(sku.id, unboundBarcode.value)
+  ElMessage.success('条码已绑定')
+  await manualReceiptScan(unboundBarcode.value)
+}
 const skuKeyword = ref('')
 const skuPage = ref(1)
 const skuTotal = ref(0)
@@ -333,11 +344,11 @@ const queueReceiptScan = (value: string) => {
   if (!code) return Promise.resolve({ ok: false, message: '扫码内容为空' })
   receiptScan.value = ''
   pendingScans.value++
-  const result = scanQueue.then(async () => { const error = await scanReceiptSku(code); return error ? { ok: false, message: error } : { ok: true, message: `已添加：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingScans.value-- })
+  const result = scanQueue.then(async () => { const error = await scanReceiptSku(code); return error ? { ok: false, message: error, bindable: tab.value === 'receipt' && error.startsWith('未找到物品：') && checkPermi(['wms:item:update']) } : { ok: true, message: `已添加：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingScans.value-- })
   scanQueue = result.then(() => {})
   return result
 }
-const manualReceiptScan = async (value: string) => { const result = await queueReceiptScan(value); if (!result.ok) ElMessage.warning(result.message) }
+const manualReceiptScan = async (value: string) => { const result = await queueReceiptScan(value); if (!result.ok) { if ('bindable' in result && result.bindable) bindScannedBarcode(value); else ElMessage.warning(result.message) } }
 const selectSku = async (sku: ItemSkuVO) => {
   if (!sku.code) { ElMessage.warning('规格编号为空，无法添加'); return }
   manualReceiptScan(sku.code)
@@ -540,7 +551,8 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <label class="info-row"><span>单据日期</span><input v-model="receiptDate" type="date" /></label>
       <label class="info-row"><span>备注</span><input v-model="receiptRemark" maxlength="255" placeholder="选填" /></label></div>
       <div class="receipt-tools"><h3>物品明细</h3>
-      <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous :process-scan="queueReceiptScan" /></div>
+      <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous :process-scan="queueReceiptScan" @bind="bindScannedBarcode" /></div>
+      <SkuPicker v-model="barcodePickerOpen" @select="confirmBarcodeSku" />
       <form class="search manual-scan" @submit.prevent="manualReceiptScan(receiptScan)"><input v-model="receiptScan" placeholder="扫码枪输入或手动输入物品条码" /><button>添加</button></form><p v-if="pendingScans">正在处理 {{ pendingScans }} 条扫码</p></div>
       <el-dialog v-model="skuPickerOpen" title="选择物品" width="min(520px, 95vw)" append-to-body>
         <form class="search" @submit.prevent="skuPage = 1; loadSkus()"><input v-model="skuKeyword" placeholder="输入物品名称" /><button>查询</button></form>
