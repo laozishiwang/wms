@@ -25,6 +25,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -67,10 +68,23 @@ public class WmsItemSkuController {
     }
 
     @PutMapping("/bind-barcode")
-    @Operation(summary = "为没有条码的物品规格绑定条码")
+    @Operation(summary = "为物品规格绑定附加条码")
     @PreAuthorize("@ss.hasPermission('wms:item:update')")
     public CommonResult<Boolean> bindBarcode(@RequestParam Long id, @RequestParam @NotBlank @Size(max = 64) String barcode) {
         itemSkuService.bindBarcode(id, barcode.trim());
+        return success(true);
+    }
+
+    @GetMapping("/additional-barcodes")
+    @PreAuthorize("@ss.hasPermission('wms:item:query')")
+    public CommonResult<List<String>> getAdditionalBarcodes(@RequestParam Long id) {
+        return success(itemSkuService.getAdditionalBarcodes(id));
+    }
+
+    @DeleteMapping("/additional-barcode")
+    @PreAuthorize("@ss.hasPermission('wms:item:update')")
+    public CommonResult<Boolean> deleteAdditionalBarcode(@RequestParam Long id, @RequestParam @NotBlank @Size(max = 64) String barcode) {
+        itemSkuService.deleteAdditionalBarcode(id, barcode.trim());
         return success(true);
     }
 

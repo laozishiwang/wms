@@ -20,6 +20,9 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -38,6 +41,9 @@ import static cn.iocoder.yudao.module.wms.enums.ErrorCodeConstants.*;
 @Service
 @Validated
 public class WmsItemSkuServiceImpl implements WmsItemSkuService {
+
+    @Resource
+    private JdbcTemplate jdbcTemplate;
 
     @Resource
     private WmsItemSkuMapper itemSkuMapper;
@@ -84,6 +90,7 @@ public class WmsItemSkuServiceImpl implements WmsItemSkuService {
             validateItemSkuUnused(diffList.get(2));
             // 删除 SKU
             itemSkuMapper.deleteByIds(deleteSkuIds);
+            for (Long skuId : deleteSkuIds) deleteAdditionalBarcodes(skuId);
         }
         if (CollUtil.isNotEmpty(diffList.get(0))) {
             // 新增场景下忽略前端误传的 SKU id：统一置 null，由数据库自增分配
@@ -105,6 +112,7 @@ public class WmsItemSkuServiceImpl implements WmsItemSkuService {
         // 校验 SKU 是否被使用
         List<WmsItemSkuDO> skus = itemSkuMapper.selectListByItemId(itemId);
         validateItemSkuUnused(skus);
+        for (WmsItemSkuDO sku : skus) deleteAdditionalBarcodes(sku.getId());
         // 删除 SKU
         itemSkuMapper.deleteByItemId(itemId);
     }
@@ -148,16 +156,46 @@ public class WmsItemSkuServiceImpl implements WmsItemSkuService {
 
     @Override
     public List<WmsItemSkuDO> getItemSkuExact(String value) {
-        return itemSkuMapper.selectExactCodeOrBarcode(value);
+        List<WmsItemSkuDO> result = new java.util.ArrayList<>(itemSkuMapper.selectExactCodeOrBarcode(value));
+        List<Long> ids = jdbcTemplate.queryForList("SELECT sku_id FROM wms_sku_barcode WHERE tenant_id=? AND barcode=?", Long.class, TenantContextHolder.getRequiredTenantId(), value);
+        if (!ids.isEmpty()) {
+            for (WmsItemSkuDO sku : itemSkuMapper.selectByIds(ids)) {
+                if (result.stream().noneMatch(item -> item.getId().equals(sku.getId()))) result.add(sku);
+            }
+        }
+        return result;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void bindBarcode(Long id, String barcode) {
-        WmsItemSkuDO sku = validateItemSkuExists(id);
-        if (sku.getBarCode() != null && !sku.getBarCode().isBlank()) throw exception(ITEM_SKU_BARCODE_ALREADY_SET);
-        if (!itemSkuMapper.selectExactCodeOrBarcode(barcode).isEmpty()) throw exception(ITEM_SKU_BARCODE_IN_USE);
-        if (itemSkuMapper.bindEmptyBarcode(id, barcode) != 1) throw exception(ITEM_SKU_BARCODE_ALREADY_SET);
+        validateItemSkuExists(id);
+        List<WmsItemSkuDO> matches = getItemSkuExact(barcode);
+        if (!matches.isEmpty()) {
+            if (matches.size() == 1 && matches.get(0).getId().equals(id)) return;
+            throw exception(ITEM_SKU_BARCODE_IN_USE);
+        }
+        try {
+            jdbcTemplate.update("INSERT INTO wms_sku_barcode (tenant_id, sku_id, barcode) VALUES (?, ?, ?)", TenantContextHolder.getRequiredTenantId(), id, barcode);
+        } catch (DuplicateKeyException e) {
+            throw exception(ITEM_SKU_BARCODE_IN_USE);
+        }
+    }
+
+    @Override
+    public List<String> getAdditionalBarcodes(Long id) {
+        validateItemSkuExists(id);
+        return jdbcTemplate.queryForList("SELECT barcode FROM wms_sku_barcode WHERE tenant_id=? AND sku_id=? ORDER BY id", String.class, TenantContextHolder.getRequiredTenantId(), id);
+    }
+
+    @Override
+    public void deleteAdditionalBarcode(Long id, String barcode) {
+        validateItemSkuExists(id);
+        jdbcTemplate.update("DELETE FROM wms_sku_barcode WHERE tenant_id=? AND sku_id=? AND barcode=?", TenantContextHolder.getRequiredTenantId(), id, barcode);
+    }
+
+    private void deleteAdditionalBarcodes(Long id) {
+        jdbcTemplate.update("DELETE FROM wms_sku_barcode WHERE tenant_id=? AND sku_id=?", TenantContextHolder.getRequiredTenantId(), id);
     }
 
     private void validateItemSkuList(List<WmsItemSkuSaveReqVO> skus) {

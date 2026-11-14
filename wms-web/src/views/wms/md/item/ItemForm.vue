@@ -89,6 +89,7 @@
                 <el-button @click="scope.row.barCode = generateWmsCode()">生成</el-button>
               </template>
             </el-input>
+            <el-button v-if="scope.row.id" link type="primary" @click="openBarcodes(scope.row)">管理附加条码</el-button>
           </template>
         </el-table-column>
         <el-table-column label="长/宽/高(cm)" width="210">
@@ -179,12 +180,17 @@
       <el-button @click="dialogVisible = false">取 消</el-button>
     </template>
   </Dialog>
+  <el-dialog v-model="barcodesVisible" title="附加条码" width="min(520px, 94vw)" append-to-body>
+    <div>{{ barcodeSku?.name }}</div>
+    <div style="display:flex; gap:8px; margin:16px 0"><el-input v-model="newBarcode" maxlength="64" placeholder="输入或扫描条码" @keyup.enter="addBarcode" /><el-button type="primary" @click="addBarcode">添加</el-button></div>
+    <el-table :data="additionalBarcodes.map((barcode) => ({ barcode }))" v-loading="barcodesLoading"><el-table-column prop="barcode" label="条码" /><el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="danger" @click="deleteBarcode(row.barcode)">删除</el-button></template></el-table-column></el-table>
+  </el-dialog>
 </template>
 
 <script lang="ts" setup>
-import { FormRules } from 'element-plus'
+import { ElMessageBox, FormRules } from 'element-plus'
 import { ItemApi, ItemVO } from '@/api/wms/md/item'
-import { ItemSkuVO } from '@/api/wms/md/item/sku'
+import { ItemSkuApi, ItemSkuVO } from '@/api/wms/md/item/sku'
 import { DIMENSION_PRECISION, PRICE_PRECISION, WEIGHT_PRECISION } from '@/views/wms/utils/format'
 import { generateWmsCode } from '@/views/wms/utils/constants'
 import ItemBrandSelect from './brand/components/ItemBrandSelect.vue'
@@ -195,6 +201,12 @@ defineOptions({ name: 'WmsItemForm' })
 
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
+const barcodesVisible = ref(false), barcodesLoading = ref(false), barcodeSku = ref<ItemSkuVO>(), newBarcode = ref('')
+const additionalBarcodes = ref<string[]>([])
+const loadBarcodes = async () => { if (!barcodeSku.value?.id) return; barcodesLoading.value = true; try { additionalBarcodes.value = await ItemSkuApi.getAdditionalBarcodes(barcodeSku.value.id) } finally { barcodesLoading.value = false } }
+const openBarcodes = async (sku: ItemSkuVO) => { barcodeSku.value = sku; newBarcode.value = ''; additionalBarcodes.value = []; barcodesVisible.value = true; await loadBarcodes() }
+const addBarcode = async () => { const value = newBarcode.value.trim(); if (!value || !barcodeSku.value?.id) return; await ItemSkuApi.bindBarcode(barcodeSku.value.id, value); newBarcode.value = ''; await loadBarcodes(); message.success('条码已绑定') }
+const deleteBarcode = async (barcode: string) => { if (!barcodeSku.value?.id) return; await ElMessageBox.confirm(`确定删除附加条码 ${barcode}？`, '删除条码', { type: 'warning' }); await ItemSkuApi.deleteAdditionalBarcode(barcodeSku.value.id, barcode); await loadBarcodes(); message.success('条码已删除') }
 
 const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题

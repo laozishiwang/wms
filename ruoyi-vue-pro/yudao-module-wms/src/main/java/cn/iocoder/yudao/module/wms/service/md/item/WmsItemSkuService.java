@@ -97,6 +97,10 @@ public interface WmsItemSkuService {
 
     void bindBarcode(Long id, String barcode);
 
+    List<String> getAdditionalBarcodes(Long id);
+
+    void deleteAdditionalBarcode(Long id, String barcode);
+
     /**
      * 按编号集合获得 SKU Map
      *
