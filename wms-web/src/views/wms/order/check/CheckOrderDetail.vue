@@ -70,7 +70,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="库位" min-width="120"><template #default="{ row }">{{ row.locationId ? `库位 ${row.locationId}` : '未分配库位' }}</template></el-table-column>
+        <el-table-column label="库区 / 库位" min-width="160"><template #default="{ row }">{{ placePath(places, row.locationId) }}</template></el-table-column>
         <el-table-column label="批次号" min-width="150">
           <template #default="{ row }">{{ row.batchNo || '未分配批次' }}</template>
         </el-table-column>
@@ -111,6 +111,9 @@ import { formatNullableDate } from '@/utils/formatTime'
 import { DICT_TYPE } from '@/utils/dict'
 import { CheckOrderApi, CheckOrderVO } from '@/api/wms/order/check'
 import { CheckOrderDetailVO } from '@/api/wms/order/check/detail'
+import request from '@/config/axios'
+import { checkPermi } from '@/utils/permission'
+import { placePath, type StoragePlace } from '@/views/wms/pda/place'
 import {
   formatPrice,
   formatQuantity,
@@ -128,6 +131,7 @@ defineOptions({ name: 'WmsCheckOrderDetail' })
 const loading = ref(false)
 const dialogVisible = ref(false)
 const detailData = ref<CheckOrderVO>({})
+const places = ref<StoragePlace[]>([])
 
 function getOrderDifferencePrice(order: CheckOrderVO) {
   return roundPrice(Number(order.actualPrice || 0) - Number(order.totalPrice || 0))
@@ -198,6 +202,9 @@ const open = async (id: number) => {
   loading.value = true
   try {
     detailData.value = await CheckOrderApi.getCheckOrder(id)
+    places.value = detailData.value.warehouseId && checkPermi(['wms:warehouse:query'])
+      ? await request.get({ url: '/wms/storage-place/list', params: { warehouseId: detailData.value.warehouseId } })
+      : []
   } finally {
     loading.value = false
   }

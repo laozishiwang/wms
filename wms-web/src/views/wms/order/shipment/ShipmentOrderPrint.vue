@@ -59,7 +59,7 @@
               <div>{{ detail.skuName || '-' }}</div>
               <div v-if="detail.skuCode" class="text-12px">编号：{{ detail.skuCode }}</div>
               <div v-if="detail.batchNo" class="text-12px">批次：{{ detail.batchNo }}</div>
-              <div class="text-12px">库位 ID：{{ detail.locationId != null ? `#${detail.locationId}` : '未分配' }}</div>
+              <div class="text-12px">库区 / 库位：{{ placePath(places, detail.locationId) }}</div>
               <div class="text-12px">到货记录：{{ detail.arrivalId ? `#${detail.arrivalId}` : '未分配' }}</div>
               <div v-if="detail.serialNos?.length" class="text-12px">序列号：{{ detail.serialNos.join('，') }}</div>
             </td>
@@ -104,6 +104,9 @@ import { formatNullableDate } from '@/utils/formatTime'
 import { DICT_TYPE, getDictLabel } from '@/utils/dict'
 import { ShipmentOrderApi, ShipmentOrderVO } from '@/api/wms/order/shipment'
 import { ShipmentOrderDetailVO } from '@/api/wms/order/shipment/detail'
+import request from '@/config/axios'
+import { checkPermi } from '@/utils/permission'
+import { placePath, type StoragePlace } from '@/views/wms/pda/place'
 import {
   formatPrice,
   formatQuantity,
@@ -118,6 +121,7 @@ import { BarcodeFormatEnum } from '@/views/mes/utils/constants'
 defineOptions({ name: 'WmsShipmentOrderPrint' })
 
 const printData = ref<ShipmentOrderVO>({}) // 打印数据
+const places = ref<StoragePlace[]>([])
 const printButtonRef = ref<HTMLButtonElement>() // 打印按钮
 const tableColumnCount = 5
 const printing = ref(false) // 是否正在准备打印，避免连点触发竞态
@@ -170,6 +174,9 @@ const executePrint = async (id: number) => {
     await nextTick()
     const data = await ShipmentOrderApi.getShipmentOrder(id)
     printData.value = data
+    places.value = data.warehouseId && checkPermi(['wms:warehouse:query'])
+      ? await request.get({ url: '/wms/storage-place/list', params: { warehouseId: data.warehouseId } })
+      : []
 
     // 等待新条码 DOM 重建并完成绘制，避免打印到上一张条码
     await waitForPrintReady()
