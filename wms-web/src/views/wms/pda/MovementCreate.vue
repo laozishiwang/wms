@@ -10,7 +10,8 @@ import PlacePicker from './PlacePicker.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
-const props = defineProps<{ sourceWarehouseId: number }>()
+import { buildMovementDraftDetails } from './draft-details'
+const props = defineProps<{ sourceWarehouseId: number; order?: any }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const warehouses = ref<WarehouseVO[]>([])
 const target = ref<number>(props.sourceWarehouseId)
@@ -20,7 +21,13 @@ const row = reactive<any>({ quantity: 1, serialNos: [] })
 const loading = ref(false)
 const details = ref<any[]>([])
 watch(target, () => { row.targetLocationId = undefined })
-onMounted(async () => { warehouses.value = await WarehouseApi.getWarehouseSimpleList() })
+onMounted(async () => {
+  warehouses.value = await WarehouseApi.getWarehouseSimpleList()
+  if (props.order) {
+    target.value = props.order.targetWarehouseId
+    details.value = (props.order.details || []).map((item: any) => ({ ...item, originalQuantity: item.quantity, originalPrice: item.price, arrivalId: item.arrivalId ?? 0, locationId: item.sourceLocationId, serialNos: item.serialNos || [], skuLabel: `${item.itemName || ''} ${item.skuName || ''}（${item.skuCode || ''}）` }))
+  }
+})
 let findRequestId = 0
 const find = async () => {
   const requestId = ++findRequestId
@@ -41,19 +48,23 @@ const add = () => {
 const save = async () => {
   if (sku.value) { ElMessage.warning('请先添加或取消当前物品'); return }
   if (!details.value.length) { ElMessage.warning('请先添加移库明细'); return }
+  if (details.value.some((item) => item.id && item.totalPrice != null && item.price == null && Number(item.quantity) !== Number(item.originalQuantity))) { ElMessage.warning('修改数量前请先填写该明细单价'); return }
+  const serials = details.value.flatMap((item) => item.serialNos || [])
+  if (details.value.some((item) => !item.quantity || item.quantity <= 0 || (item.serialNos?.length || 0) > item.quantity) || new Set(serials).size !== serials.length) { ElMessage.warning('请检查移库数量和序列号'); return }
   loading.value = true
   try {
     await validateArrivalBalances(props.sourceWarehouseId, details.value, false)
     const no = `MV${Date.now()}${Math.floor(Math.random() * 1000)}`
-    const items = details.value.map(({ skuLabel: _label, locationId: _location, ...detail }) => detail)
-    await MovementOrderApi.createMovementOrder({ no, orderTime: String(Date.now()), sourceWarehouseId: props.sourceWarehouseId, targetWarehouseId: target.value, details: items })
+    const items = buildMovementDraftDetails(details.value)
+    const data = { ...props.order, no: props.order?.no || no, orderTime: props.order?.orderTime || String(Date.now()), sourceWarehouseId: props.sourceWarehouseId, targetWarehouseId: target.value, details: items }
+    if (props.order) await MovementOrderApi.updateMovementOrder(data); else await MovementOrderApi.createMovementOrder(data)
     ElMessage.success('移库草稿已保存'); emit('saved')
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '保存失败') } finally { loading.value = false }
 }
 </script>
 <template>
   <section class="movement-create">
-    <button class="back" @click="emit('close')">‹ 返回</button><h2>新建移库草稿</h2>
+    <button class="back" @click="emit('close')">‹ 返回</button><h2>{{ order ? '修改' : '新建' }}移库草稿</h2>
     <div class="detail-panel"><p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select></div>
     <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
     <div v-if="sku" class="detail-panel"><p>移库信息 · {{ sku.name }}（{{ sku.code }}）</p>
@@ -64,7 +75,7 @@ const save = async () => {
       <p>数量</p><el-input-number v-model="row.quantity" :min="0.001" :precision="3" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
     </div><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
-    <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }} · 数量：{{ item.quantity }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><el-button link @click="details.splice(index, 1)">删除</el-button></article>
+    <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><p>数量</p><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /><p>单价</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p><el-button link type="danger" @click="details.splice(index, 1)">删除明细</el-button></article>
     <p class="save-row"><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
   </section>
 </template>

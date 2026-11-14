@@ -5,6 +5,7 @@ import MovementCreate from './MovementCreate.vue'
 import ReceiptDraftDetail from './ReceiptDraftDetail.vue'
 import PlacePicker from './PlacePicker.vue'
 import { placePath, type StoragePlace } from './place'
+import { buildDraftDetails } from './draft-details'
 import MerchantSelect from '@/views/wms/md/merchant/components/MerchantSelect.vue'
 import ScanButton from './ScanButton.vue'
 import CheckCreate from './CheckCreate.vue'
@@ -135,6 +136,8 @@ const showWarehouseChoices = ref(false)
 const creatingReceipt = ref(false)
 const creatingMovement = ref(false)
 const creatingCheck = ref(false)
+const editingOrder = ref<any>()
+const originalReceiptDate = ref('')
 const receiptType = ref<number | undefined>(101)
 const receiptMerchantId = ref<number>()
 const receiptRemark = ref('')
@@ -164,7 +167,7 @@ const loadSkus = async () => {
 }
 const openSkuPicker = async () => { skuPickerOpen.value = true; skuPage.value = 1; skuKeyword.value = ''; await loadSkus() }
 let nextReceiptRowId = 0
-const receiptRows = ref<Array<{ rowId: number; arrivalId?: number; sku: ItemSkuVO; quantity: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[]; palletNo?: string; boxNo?: string; rollNo?: string; netLength?: number; grossLength?: number; netWeight?: number; grossWeight?: number; length?: number; width?: number; height?: number; price?: number; salesPrice?: number }>>([])
+const receiptRows = ref<Array<{ id?: number; rowId: number; arrivalId?: number; sku: ItemSkuVO; quantity: number; originalQuantity?: number; originalPrice?: number; totalPrice?: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[]; palletNo?: string; boxNo?: string; rollNo?: string; netLength?: number; grossLength?: number; netWeight?: number; grossWeight?: number; length?: number; width?: number; height?: number; price?: number; salesPrice?: number }>>([])
 const dateValue = (value?: number) => { if (!value) return ''; const d = new Date(value); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const dateMillis = (event: Event) => { const value = (event.target as HTMLInputElement).value; return value ? new Date(`${value}T00:00:00`).getTime() : undefined }
 const arrivalFields: Array<{ key: 'palletNo' | 'boxNo' | 'rollNo' | 'netLength' | 'grossLength' | 'netWeight' | 'grossWeight' | 'length' | 'width' | 'height' | 'price' | 'salesPrice'; label: string; text?: boolean }> = [
@@ -223,7 +226,7 @@ const load = async () => {
 }
 const confirmDiscard = async () => {
   if (pendingScans.value) { ElMessage.warning('物品扫码处理中，请稍候'); return false }
-  const unsavedReceipt = (creatingReceipt.value && receiptRows.value.length > 0) || creatingMovement.value || creatingCheck.value
+  const unsavedReceipt = (creatingReceipt.value && (!!editingOrder.value || receiptRows.value.length > 0)) || creatingMovement.value || creatingCheck.value
   if (!dirty.value && !unsavedReceipt) return true
   try {
     await ElMessageBox.confirm(unsavedReceipt ? '扫码明细尚未保存，离开将丢失修改。确定离开吗？' : '盘点数量尚未保存，离开将丢失修改。确定离开吗？', '提示', { type: 'warning' })
@@ -247,16 +250,34 @@ const goHome = async () => {
 const backToList = async () => { if (await confirmDiscard()) selected.value = undefined }
 onBeforeRouteLeave(() => confirmDiscard())
 const warnBeforeUnload = (event: BeforeUnloadEvent) => {
-  if (dirty.value || (creatingReceipt.value && receiptRows.value.length > 0)) event.preventDefault()
+  if (dirty.value || (creatingReceipt.value && (!!editingOrder.value || receiptRows.value.length > 0)) || creatingMovement.value || creatingCheck.value) event.preventDefault()
 }
 onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload))
 onUnmounted(() => window.removeEventListener('beforeunload', warnBeforeUnload))
 const search = () => { page.value = 1; load() }
-const cancelCheck = async () => { if (await confirmDiscard()) creatingCheck.value = false }
-const cancelMovement = async () => { if (await confirmDiscard()) creatingMovement.value = false }
+const cancelCheck = async () => { if (await confirmDiscard()) { creatingCheck.value = false; editingOrder.value = undefined } }
+const cancelMovement = async () => { if (await confirmDiscard()) { creatingMovement.value = false; editingOrder.value = undefined } }
 const cancelReceipt = async () => {
   if (!(await confirmDiscard())) return
-  creatingReceipt.value = false; selectedLocation.value = undefined; receiptRows.value = []
+  creatingReceipt.value = false; editingOrder.value = undefined; selectedLocation.value = undefined; receiptRows.value = []
+}
+const editDraft = async () => {
+  if (dirty.value) { ElMessage.warning('请先保存盘点数量'); return }
+  const id = selected.value.id
+  if (tab.value === 'movement') { editingOrder.value = await MovementOrderApi.getMovementOrder(id); if (editingOrder.value.status !== 0) { ElMessage.warning('单据状态已变化，请刷新'); return }; tabWarehouses.movement = { id: editingOrder.value.sourceWarehouseId, name: editingOrder.value.sourceWarehouseName || '' }; creatingMovement.value = true; return }
+  if (tab.value === 'check') { editingOrder.value = await CheckOrderApi.getCheckOrder(id); if (editingOrder.value.status !== 0) { ElMessage.warning('单据状态已变化，请刷新'); return }; tabWarehouses.check = { id: editingOrder.value.warehouseId, name: editingOrder.value.warehouseName || '' }; creatingCheck.value = true; return }
+  const order: any = tab.value === 'receipt' ? await ReceiptOrderApi.getReceiptOrder(id) : await ShipmentOrderApi.getShipmentOrder(id)
+  if (order.status !== 0) { ElMessage.warning('单据状态已变化，请刷新'); return }
+  editingOrder.value = order
+  tabWarehouses[tab.value] = { id: order.warehouseId, name: order.warehouseName || '' }
+  creatingReceipt.value = true
+  await nextTick()
+  receiptType.value = order.type; receiptMerchantId.value = order.merchantId; receiptRemark.value = order.remark || ''
+  const time = typeof order.orderTime === 'number' || /^\d+$/.test(String(order.orderTime)) ? Number(order.orderTime) : new Date(order.orderTime).getTime()
+  receiptDate.value = dateValue(time)
+  originalReceiptDate.value = receiptDate.value
+  receiptRows.value = (order.details || []).map((row: any) => ({ ...row, originalQuantity: row.quantity, originalPrice: row.price, arrivalId: tab.value === 'shipment' ? (row.arrivalId ?? 0) : row.arrivalId, rowId: ++nextReceiptRowId, sku: { id: row.skuId, code: row.skuCode, name: row.skuName, itemName: row.itemName, unit: row.unit } }))
+  if (tab.value === 'shipment') await Promise.all(receiptRows.value.map((row) => selectRowArrival(row, row.arrivalId)))
 }
 const applyWarehouse = async (found: WarehouseVO) => {
   if (!found.id) return
@@ -298,7 +319,7 @@ const scanReceiptSku = async (code: string) => {
   const limit = row?.arrivalId !== undefined ? row.available : undefined
   if (limit !== undefined && (row?.quantity || 0) + 1 > limit) { ElMessage.warning('数量超过所选到货记录的可用库存'); return }
   if (row) row.quantity += 1
-  else receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, netLength: unique[0].netLength, grossLength: unique[0].grossLength, netWeight: unique[0].netWeight, grossWeight: unique[0].grossWeight, length: unique[0].length, width: unique[0].width, height: unique[0].height, price: unique[0].costPrice, salesPrice: unique[0].sellingPrice })
+  else receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, netLength: unique[0].netLength, grossLength: unique[0].grossLength, netWeight: unique[0].netWeight, grossWeight: unique[0].grossWeight, length: unique[0].length, width: unique[0].width, height: unique[0].height, price: tab.value === 'receipt' ? unique[0].costPrice : undefined, salesPrice: unique[0].sellingPrice })
 }
 const pendingScans = ref(0)
 let scanQueue = Promise.resolve()
@@ -333,6 +354,7 @@ const selectRowBatch = (row: (typeof receiptRows.value)[number], batchNo?: strin
 const saveReceipt = async () => {
   if (pendingScans.value) { ElMessage.warning('物品扫码处理中，请稍候'); return }
   if (!receiptDate.value || receiptType.value == null || !warehouseId.value || !receiptRows.value.length || receiptRows.value.some((row) => !row.quantity || row.quantity <= 0 || (row.available !== undefined && row.quantity > row.available))) { ElMessage.warning('请选择单据类型、仓库并填写有效商品数量'); return }
+  if (receiptRows.value.some((row) => row.id && row.totalPrice != null && row.price == null && Number(row.quantity) !== Number(row.originalQuantity))) { ElMessage.warning('修改数量前请先填写该明细单价'); return }
   if (tab.value === 'receipt' && receiptRows.value.some((row) => (!row.batchNo?.trim() && (row.productionDate || row.expirationDate)) || (row.productionDate && row.expirationDate && row.expirationDate < row.productionDate))) { ElMessage.warning('填写生产或到期日期时请填写批次号，且到期日期不能早于生产日期'); return }
   const numericFields = ['netLength', 'grossLength', 'netWeight', 'grossWeight', 'length', 'width', 'height', 'price', 'salesPrice'] as const
   if (tab.value === 'receipt' && receiptRows.value.some((row) => numericFields.some((key) => row[key] != null && String(row[key]) !== '' && (!Number.isFinite(Number(row[key])) || Number(row[key]) < 0)))) { ElMessage.warning('尺寸、重量和价格不能小于零'); return }
@@ -360,14 +382,18 @@ const saveReceipt = async () => {
         }
       }
     }
-    const data = { no: `PDA${Date.now()}${Math.floor(Math.random() * 1000)}`, type: receiptType.value, orderTime: String(new Date(`${receiptDate.value}T00:00:00`).getTime()), merchantId: receiptMerchantId.value, remark: receiptRemark.value || undefined, warehouseId: warehouseId.value, details: receiptRows.value.map((row) => ({ skuId: row.sku.id, quantity: row.quantity, locationId: row.locationId, batchNo: row.batchNo, ...(tab.value === 'shipment' ? { arrivalId: row.arrivalId } : {}), productionDate: row.productionDate, expirationDate: row.expirationDate, serialNos: row.serialNos?.length ? row.serialNos : undefined, ...(tab.value === 'receipt' ? { palletNo: row.palletNo, boxNo: row.boxNo, rollNo: row.rollNo, ...Object.fromEntries(numericFields.map((key) => [key, row[key] == null || String(row[key]) === '' ? undefined : Number(row[key])])) } : {}) })) }
-    const id = tab.value === 'shipment' ? await ShipmentOrderApi.createShipmentOrder(data) : await ReceiptOrderApi.createReceiptOrder(data)
-    ElMessage.success(`${tab.value === 'shipment' ? '出库' : '入库'}草稿已创建，请核对后完成`)
+    const data = { ...editingOrder.value, no: editingOrder.value?.no || `PDA${Date.now()}${Math.floor(Math.random() * 1000)}`, type: receiptType.value, orderTime: editingOrder.value && receiptDate.value === originalReceiptDate.value ? editingOrder.value.orderTime : String(new Date(`${receiptDate.value}T00:00:00`).getTime()), merchantId: receiptMerchantId.value, remark: receiptRemark.value || undefined, warehouseId: warehouseId.value, details: buildDraftDetails(receiptRows.value, tab.value === 'receipt', !!editingOrder.value) }
+    let id = editingOrder.value?.id
+    if (id) { if (tab.value === 'shipment') await ShipmentOrderApi.updateShipmentOrder(data); else await ReceiptOrderApi.updateReceiptOrder(data) }
+    else id = tab.value === 'shipment' ? await ShipmentOrderApi.createShipmentOrder(data) : await ReceiptOrderApi.createReceiptOrder(data)
+    ElMessage.success('草稿已保存')
     creatingReceipt.value = false
+    editingOrder.value = undefined
     receiptRows.value = []
     selectedLocation.value = undefined
     const order = tab.value === 'shipment' ? await ShipmentOrderApi.getShipmentOrder(id) : await ReceiptOrderApi.getReceiptOrder(id)
     await open(order)
+    await load()
   } finally { savingReceipt.value = false }
 }
 const open = async (row: any) => {
@@ -428,6 +454,13 @@ const saveCheck = async () => {
   dirty.value = false
   ElMessage.success('盘点数量已保存')
 }
+const deleteCheck = async () => {
+  await ElMessageBox.confirm(`确定删除盘点草稿 ${selected.value.no}？`, '删除草稿', { type: 'warning' })
+  await CheckOrderApi.deleteCheckOrder(selected.value.id)
+  ElMessage.success('草稿已删除')
+  selected.value = undefined
+  await load()
+}
 const canSubmitApproval = () => {
   if (dirty.value) { ElMessage.warning('请先保存盘点数量'); return false }
   return true
@@ -457,7 +490,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
     <nav><button v-for="(label, key) in labels" :key="key" :class="{ active: tab === key }" @click="changeTab(key as Tab)">{{ label }}</button></nav>
     <section v-if="creatingReceipt" class="content receipt-create">
       <button class="back" @click="cancelReceipt">‹ 返回列表</button>
-      <h2>{{ tab === 'shipment' ? '出库' : '入库' }}开单</h2>
+      <h2>{{ editingOrder ? '修改' : '新建' }}{{ tab === 'shipment' ? '出库' : '入库' }}单</h2>
       <div class="receipt-info"><h3>仓库与位置</h3><div class="info-row"><span>仓库</span><strong>{{ warehouseName }}</strong></div>
       <div v-for="kind in (['SHELF', 'LOCATION'] as const)" :key="kind" class="place-group"><h4>{{ kind === 'SHELF' ? '库区' : '库位' }}（可选）</h4>
         <div class="method-row"><span>方式一</span><ScanButton :disabled="pendingScans > 0" :label="`扫码选择${kind === 'SHELF' ? '库区' : '库位'}`" @scan="(value) => choosePlaceByCode(kind, value)" /></div>
@@ -484,14 +517,14 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
         <strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong>
         <p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p>
         <div class="quantity-row"><span>数量</span><div class="quantity-control"><button type="button" :disabled="!!row.serialNos?.length || row.quantity <= 1" @click="row.quantity = Number((row.quantity - 1).toFixed(2))">−</button><input v-model.number="row.quantity" type="number" min="0.01" step="any" :disabled="!!row.serialNos?.length" /><button type="button" :disabled="!!row.serialNos?.length || (row.available !== undefined && row.quantity + 1 > row.available)" @click="row.quantity = Number((row.quantity + 1).toFixed(2))">＋</button></div><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /></div>
-        <div v-if="tab === 'shipment'" class="shipment-stock"><label>库存批次<BatchSelect :model-value="row.batchNo" :warehouse-id="warehouseId" :sku-id="row.sku.id" :location-id="row.locationId" filter-location @update:model-value="selectRowBatch(row, $event)" /></label><label>到货记录<ArrivalSelect :model-value="row.arrivalId" @update:model-value="selectRowArrival(row, $event)" :warehouse-id="warehouseId" :sku-id="row.sku.id" :location-id="row.locationId" :batch-no="row.batchNo" /></label></div>
+        <div v-if="tab === 'shipment'" class="shipment-stock"><label>库存批次<BatchSelect :model-value="row.batchNo" :warehouse-id="warehouseId" :sku-id="row.sku.id" :location-id="row.locationId" filter-location @update:model-value="selectRowBatch(row, $event)" /></label><label>到货记录<ArrivalSelect :model-value="row.arrivalId" @update:model-value="selectRowArrival(row, $event)" :warehouse-id="warehouseId" :sku-id="row.sku.id" :location-id="row.locationId" :batch-no="row.batchNo" /></label><label v-if="editingOrder">单价<input v-model.number="row.price" type="number" min="0" step="any" placeholder="选填" /></label></div>
         <details v-if="tab === 'receipt'" class="arrival-details"><summary>到货信息</summary><div class="arrival-grid"><label>批次号<input v-model="row.batchNo" maxlength="64" placeholder="选填" /></label><label>生产日期<input type="date" :value="dateValue(row.productionDate)" @input="row.productionDate = dateMillis($event)" /></label><label>到期日期<input type="date" :value="dateValue(row.expirationDate)" @input="row.expirationDate = dateMillis($event)" /></label><label v-for="field in arrivalFields" :key="field.key">{{ field.label }}<input v-if="field.text" v-model="row[field.key]" maxlength="64" :placeholder="field.label" /><input v-else v-model.number="row[field.key]" type="number" min="0" step="any" :placeholder="field.label" /></label></div></details>
-        <div class="row-actions"><button class="back" @click="receiptRows.push({ ...row, rowId: ++nextReceiptRowId, quantity: 1, serialNos: [], arrivalId: undefined, available: undefined, palletNo: undefined, boxNo: undefined, rollNo: undefined })">复制明细</button><button class="back" @click="receiptRows.splice(index, 1)">删除</button></div>
+        <div class="row-actions"><button class="back" @click="receiptRows.push({ ...row, id: undefined, rowId: ++nextReceiptRowId, quantity: 1, serialNos: [], arrivalId: undefined, available: undefined, palletNo: undefined, boxNo: undefined, rollNo: undefined })">复制明细</button><button class="back" @click="receiptRows.splice(index, 1)">删除</button></div>
       </article>
       <div class="receipt-save"><span>共 {{ receiptRows.length }} 条明细</span><button class="primary" :disabled="savingReceipt || pendingScans > 0" @click="saveReceipt">保存草稿</button></div>
     </section>
-    <CheckCreate v-else-if="creatingCheck && warehouseId" :warehouse-id="warehouseId" @close="cancelCheck" @saved="creatingCheck = false; load()" />
-    <MovementCreate v-else-if="creatingMovement && warehouseId" :source-warehouse-id="warehouseId" @close="cancelMovement" @saved="creatingMovement = false; load()" />
+    <CheckCreate v-else-if="creatingCheck && warehouseId" :warehouse-id="warehouseId" :order="editingOrder" @close="cancelCheck" @saved="creatingCheck = false; editingOrder = undefined; selected = undefined; load()" />
+    <MovementCreate v-else-if="creatingMovement && warehouseId" :source-warehouse-id="warehouseId" :order="editingOrder" @close="cancelMovement" @saved="creatingMovement = false; editingOrder = undefined; selected = undefined; load()" />
     <template v-else-if="!selected">
       <section class="work-section warehouse-section"><div class="section-heading"><h2>仓库</h2></div>
       <template v-if="!warehouseId">
@@ -502,7 +535,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       </template>
       <template v-else>
         <div class="warehouse-current"><div><span>当前仓库</span><strong>{{ warehouseName }}</strong></div><button type="button" @click="clearWarehouse">更换</button></div>
-        <button v-if="tab !== 'inventory'" v-hasPermi="[`wms:${tab}-order:create`]" class="create-order" @click="tab === 'check' ? creatingCheck = true : tab === 'movement' ? creatingMovement = true : (selectedLocation = undefined, receiptRows = [], receiptType = getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value, creatingReceipt = true)">＋ 新建{{ labels[tab] }}单</button>
+        <button v-if="tab !== 'inventory'" v-hasPermi="[`wms:${tab}-order:create`]" class="create-order" @click="editingOrder = undefined; tab === 'check' ? creatingCheck = true : tab === 'movement' ? creatingMovement = true : (selectedLocation = undefined, receiptRows = [], receiptType = getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)[0]?.value, creatingReceipt = true)">＋ 新建{{ labels[tab] }}单</button>
       </template>
       </section>
       <section class="work-section list-section"><div class="section-heading"><h2>{{ tab === 'inventory' ? '库存列表' : '单据列表' }}</h2><span>共 {{ total }} 条</span></div>
@@ -518,7 +551,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       </div>
       </section>
     </template>
-    <ReceiptDraftDetail v-else-if="tab === 'receipt' || tab === 'shipment' || tab === 'movement'" :kind="tab" :order="selected" :details="details" :approval-enabled="approvalEnabled" @back="backToList" @updated="open(selected); load()" @changed="selected = undefined; load()" />
+    <ReceiptDraftDetail v-else-if="tab === 'receipt' || tab === 'shipment' || tab === 'movement'" :kind="tab" :order="selected" :details="details" :approval-enabled="approvalEnabled" @back="backToList" @edit="editDraft" @updated="open(selected); load()" @changed="selected = undefined; load()" />
     <section v-else-if="tab === 'check'" class="content">
       <ApprovalActions v-if="(approvalEnabled || selected.status === 1) && !dirty" :before-submit="canSubmitApproval" type="check" :id="selected.id" :status="selected.status" @changed="selected = undefined; load()" />
       <button class="back" @click="backToList">‹ 返回列表</button><div class="check-summary"><span>盘库单</span><strong>{{ selected.no }}</strong><span>{{ selected.warehouseName }}</span><div class="check-stats"><div>明细<b>{{ details.length }}</b></div><div>账面数量<b>{{ checkBookTotal }}</b></div><div>实盘数量<b>{{ checkActualTotal }}</b></div></div></div><h2 class="check-heading">盘点明细</h2>
@@ -527,6 +560,8 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       </template>
       <article v-for="item in visibleDetails" :key="item.id"><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p><p>库区 / 库位：{{ placePath(storagePlaces, item.locationId) }}</p><p v-if="item.batchNo">批次：{{ item.batchNo }}</p><p>到货记录：{{ item.arrivalId === 0 ? '历史未分配' : item.arrivalId == null ? '未选择' : item.arrivalId }}</p><b>账面数量 {{ item.quantity }} {{ item.unit }}</b><p v-if="selected.status === 0">实盘序列号 <SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></p><p>实盘数量 <el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><span v-else>{{ item.checkQuantity }}</span></p></article>
       <button v-if="selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="saveCheck">保存盘点数量</button>
+      <button v-if="selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="editDraft">修改草稿明细</button>
+      <button v-if="selected.status === 0" v-hasPermi="['wms:check-order:delete']" class="back" @click="deleteCheck">删除草稿</button>
       <button v-if="selected.status === 0 && !approvalEnabled" v-hasPermi="['wms:check-order:complete']" class="primary" @click="complete">确认完成盘库</button>
     </section>
     </template>
@@ -635,6 +670,7 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .quantity-control input { width: 74px; min-width: 0; border: 0; text-align: center; font-size: 16px; appearance: textfield; }.quantity-control input::-webkit-inner-spin-button { appearance: none; }
 .arrival-details { border-top: 1px solid #edf1f6; padding-top: 14px; }.arrival-details summary { color: #245eea; cursor: pointer; font-weight: 600; }.row-actions { display: flex; gap: 8px; margin-top: 16px; }
 .shipment-stock { display: grid; gap: 12px; margin: 14px 0; }.shipment-stock label { display: grid; gap: 6px; color: #61728a; font-size: 13px; }
+.shipment-stock input { min-height: 42px; padding: 0 12px; border: 1px solid #dce5f1; border-radius: 10px; font-size: 16px; }
 @media (pointer: fine) { .scroll-indicator { display: none; } }
 @media (pointer: coarse) { :global(html.pda-scroll-page) { scrollbar-width: none; } :global(html.pda-scroll-page::-webkit-scrollbar) { display: none; } }
 @media (max-width: 768px) { .pda input, .pda select, .pda textarea, .pda :deep(input), .pda :deep(textarea), :global(.el-dialog input), :global(.el-dialog textarea) { font-size: 16px !important; } }
