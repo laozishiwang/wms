@@ -158,6 +158,8 @@ watch(creatingReceipt, (creating) => {
 })
 const receiptScan = ref('')
 const skuPickerOpen = ref(false)
+const scanSelectedSku = ref<ItemSkuVO>()
+const choosingScanSku = ref(false)
 const barcodePickerOpen = ref(false)
 const newBarcodeItemOpen = ref(false)
 const unboundBarcode = ref('')
@@ -182,7 +184,8 @@ const loadSkus = async () => {
     skuTotal.value = result.total
   } finally { skuLoading.value = false }
 }
-const openSkuPicker = async () => { skuPickerOpen.value = true; skuPage.value = 1; skuKeyword.value = ''; await loadSkus() }
+const openSkuPicker = async (forScanning = false) => { choosingScanSku.value = forScanning; skuPickerOpen.value = true; skuPage.value = 1; skuKeyword.value = ''; await loadSkus() }
+watch([tab, creatingReceipt], () => { scanSelectedSku.value = undefined })
 let nextReceiptRowId = 0
 const receiptRows = ref<Array<{ id?: number; rowId: number; arrivalId?: number; sku: ItemSkuVO; quantity: number; originalQuantity?: number; originalPrice?: number; totalPrice?: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[]; palletNo?: string; boxNo?: string; rollNo?: string; netLength?: number; grossLength?: number; netWeight?: number; grossWeight?: number; length?: number; width?: number; height?: number; price?: number; salesPrice?: number }>>([])
 const dateValue = (value?: number) => { if (!value) return ''; const d = new Date(value); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -323,9 +326,10 @@ const clearWarehouse = async () => { if (creatingReceipt.value && !(await confir
 const scanReceiptSku = async (code: string) => {
   if (!code) return '扫码内容为空'
   let unique: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
+  if (scanSelectedSku.value && unique.length === 1 && unique[0].id !== scanSelectedSku.value.id) return '扫描的物品与指定扫码物品不一致'
   let parsed: Record<string, string> | null = null
   if (unique.length === 0 && tab.value === 'receipt') {
-    parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value: code } })
+    parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value: code, skuId: scanSelectedSku.value?.id } })
     if (parsed) {
       unique = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
       if (unique.length !== 1 || !unique[0].id) return '二维码中的规格编号未找到或不唯一，请检查规则和物品资料'
@@ -374,6 +378,7 @@ const queueReceiptScan = (value: string) => {
 const manualReceiptScan = async (value: string) => { const result = await queueReceiptScan(value); if (!result.ok) { if ('bindable' in result && result.bindable) bindScannedBarcode(value); else ElMessage.warning(result.message) } }
 const selectSku = async (sku: ItemSkuVO) => {
   if (!sku.code) { ElMessage.warning('规格编号为空，无法添加'); return }
+  if (choosingScanSku.value) { scanSelectedSku.value = sku; choosingScanSku.value = false; skuPickerOpen.value = false; return }
   manualReceiptScan(sku.code)
   skuPickerOpen.value = false
 }
@@ -574,7 +579,8 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <label class="info-row"><span>单据日期</span><input v-model="receiptDate" type="date" /></label>
       <label class="info-row"><span>备注</span><input v-model="receiptRemark" maxlength="255" placeholder="选填" /></label></div>
       <div class="receipt-tools"><h3>物品明细</h3>
-      <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous :process-scan="queueReceiptScan" @bind="bindScannedBarcode" /></div>
+      <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker()"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous :process-scan="queueReceiptScan" @bind="bindScannedBarcode" /></div>
+      <div v-if="tab === 'receipt'"><el-button link type="primary" @click="openSkuPicker(true)">{{ scanSelectedSku ? `扫码物品：${scanSelectedSku.itemName || ''} ${scanSelectedSku.name || ''}` : '指定扫码物品' }}</el-button><el-button v-if="scanSelectedSku" link @click="scanSelectedSku = undefined">清除</el-button></div>
       <SkuPicker v-model="barcodePickerOpen" :allow-create="checkPermi(['wms:item:create'])" :allow-bind="checkPermi(['wms:item:update'])" @select="confirmBarcodeSku" @create="newBarcodeItemOpen = true" />
       <NewBarcodeItem v-model="newBarcodeItemOpen" :barcode="unboundBarcode" @created="manualReceiptScan" />
       <form class="search manual-scan" @submit.prevent="manualReceiptScan(receiptScan)"><input v-model="receiptScan" placeholder="扫码枪输入或手动输入物品条码" /><button>添加</button></form><p v-if="pendingScans">正在处理 {{ pendingScans }} 条扫码</p></div>

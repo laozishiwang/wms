@@ -90,6 +90,7 @@
               </template>
             </el-input>
             <el-button v-if="scope.row.id" link type="primary" @click="openBarcodes(scope.row)">管理附加条码</el-button>
+            <el-button v-if="scope.row.id" link type="primary" @click="scanRulesRef?.open(scope.row)">设置二维码</el-button>
           </template>
         </el-table-column>
         <el-table-column label="长/宽/高(cm)" width="210">
@@ -185,6 +186,7 @@
     <div style="display:flex; gap:8px; margin:16px 0"><el-input v-model="newBarcode" maxlength="64" placeholder="输入或扫描条码" @keyup.enter="addBarcode" /><el-button type="primary" @click="addBarcode">添加</el-button></div>
     <el-table :data="additionalBarcodes.map((barcode) => ({ barcode }))" v-loading="barcodesLoading"><el-table-column prop="barcode" label="条码" /><el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="danger" @click="deleteBarcode(row.barcode)">删除</el-button></template></el-table-column></el-table>
   </el-dialog>
+  <ScanRules ref="scanRulesRef" />
 </template>
 
 <script lang="ts" setup>
@@ -195,12 +197,14 @@ import { DIMENSION_PRECISION, PRICE_PRECISION, WEIGHT_PRECISION } from '@/views/
 import { generateWmsCode } from '@/views/wms/utils/constants'
 import ItemBrandSelect from './brand/components/ItemBrandSelect.vue'
 import ItemCategorySelect from './category/components/ItemCategorySelect.vue'
+import ScanRules from './ScanRules.vue'
 
 /** WMS 物品表单 */
 defineOptions({ name: 'WmsItemForm' })
 
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
+const scanRulesRef = ref<InstanceType<typeof ScanRules>>()
 const barcodesVisible = ref(false), barcodesLoading = ref(false), barcodeSku = ref<ItemSkuVO>(), newBarcode = ref('')
 const additionalBarcodes = ref<string[]>([])
 const loadBarcodes = async () => { if (!barcodeSku.value?.id) return; barcodesLoading.value = true; try { additionalBarcodes.value = await ItemSkuApi.getAdditionalBarcodes(barcodeSku.value.id) } finally { barcodesLoading.value = false } }

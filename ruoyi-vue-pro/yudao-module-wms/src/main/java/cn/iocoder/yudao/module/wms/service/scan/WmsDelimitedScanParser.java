@@ -14,7 +14,7 @@ public final class WmsDelimitedScanParser {
     private WmsDelimitedScanParser() {}
 
     public static void validate(String delimiter, Map<String, Integer> fields) {
-        if (delimiter == null || delimiter.isEmpty() || delimiter.length() > 16 || fields == null || !fields.containsKey("skuCode")) throw new IllegalArgumentException("请设置分隔符和物品规格字段");
+        if (delimiter == null || delimiter.isEmpty() || delimiter.length() > 16 || fields == null || fields.isEmpty()) throw new IllegalArgumentException("请设置分隔符和至少一个字段");
         for (Map.Entry<String, Integer> field : fields.entrySet()) {
             if (!FIELDS.contains(field.getKey()) || field.getValue() == null || field.getValue() < 1 || field.getValue() > 100) throw new IllegalArgumentException("规则字段或位置不正确");
         }

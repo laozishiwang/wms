@@ -67,7 +67,7 @@
               <Icon class="mr-5px" icon="ep:download" />
               导出
             </el-button>
-            <el-button v-hasPermi="['wms:item:query']" @click="scanRulesRef?.open()">二维码规则</el-button>
+            <el-button v-hasPermi="['wms:item:query']" @click="scanRulesRef?.open()">物品二维码规则</el-button>
           </el-form-item>
         </el-form>
       </ContentWrap>
