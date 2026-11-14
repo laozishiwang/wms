@@ -11,6 +11,7 @@ import MerchantSelect from '@/views/wms/md/merchant/components/MerchantSelect.vu
 import ScanButton from './ScanButton.vue'
 import CheckCreate from './CheckCreate.vue'
 import SkuPicker from './SkuPicker.vue'
+import NewBarcodeItem from './NewBarcodeItem.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import BatchSelect from '@/views/wms/inventory/components/BatchSelect.vue'
 import { listArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
@@ -158,6 +159,7 @@ watch(creatingReceipt, (creating) => {
 const receiptScan = ref('')
 const skuPickerOpen = ref(false)
 const barcodePickerOpen = ref(false)
+const newBarcodeItemOpen = ref(false)
 const unboundBarcode = ref('')
 const bindScannedBarcode = (code: string) => { unboundBarcode.value = code; barcodePickerOpen.value = true }
 const confirmBarcodeSku = async (sku: ItemSkuVO) => {
@@ -344,7 +346,7 @@ const queueReceiptScan = (value: string) => {
   if (!code) return Promise.resolve({ ok: false, message: '扫码内容为空' })
   receiptScan.value = ''
   pendingScans.value++
-  const result = scanQueue.then(async () => { const error = await scanReceiptSku(code); return error ? { ok: false, message: error, bindable: tab.value === 'receipt' && error.startsWith('未找到物品：') && checkPermi(['wms:item:update']) } : { ok: true, message: `已添加：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingScans.value-- })
+  const result = scanQueue.then(async () => { const error = await scanReceiptSku(code); return error ? { ok: false, message: error, bindable: tab.value === 'receipt' && error.startsWith('未找到物品：') && (checkPermi(['wms:item:update']) || checkPermi(['wms:item:create'])) } : { ok: true, message: `已添加：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingScans.value-- })
   scanQueue = result.then(() => {})
   return result
 }
@@ -552,7 +554,8 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <label class="info-row"><span>备注</span><input v-model="receiptRemark" maxlength="255" placeholder="选填" /></label></div>
       <div class="receipt-tools"><h3>物品明细</h3>
       <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous :process-scan="queueReceiptScan" @bind="bindScannedBarcode" /></div>
-      <SkuPicker v-model="barcodePickerOpen" @select="confirmBarcodeSku" />
+      <SkuPicker v-model="barcodePickerOpen" :allow-create="checkPermi(['wms:item:create'])" :allow-bind="checkPermi(['wms:item:update'])" @select="confirmBarcodeSku" @create="newBarcodeItemOpen = true" />
+      <NewBarcodeItem v-model="newBarcodeItemOpen" :barcode="unboundBarcode" @created="manualReceiptScan" />
       <form class="search manual-scan" @submit.prevent="manualReceiptScan(receiptScan)"><input v-model="receiptScan" placeholder="扫码枪输入或手动输入物品条码" /><button>添加</button></form><p v-if="pendingScans">正在处理 {{ pendingScans }} 条扫码</p></div>
       <el-dialog v-model="skuPickerOpen" title="选择物品" width="min(520px, 95vw)" append-to-body>
         <form class="search" @submit.prevent="skuPage = 1; loadSkus()"><input v-model="skuKeyword" placeholder="输入物品名称" /><button>查询</button></form>

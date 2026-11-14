@@ -28,6 +28,9 @@ export interface ItemSkuVO {
 
 // WMS 商品 SKU API
 export const ItemSkuApi = {
+  getExact: async (value: string): Promise<ItemSkuVO[]> => {
+    return await request.get({ url: '/wms/item-sku/exact', params: { value } })
+  },
   bindBarcode: async (id: number, barcode: string) => {
     return await request.put({ url: '/wms/item-sku/bind-barcode', params: { id, barcode } })
   },

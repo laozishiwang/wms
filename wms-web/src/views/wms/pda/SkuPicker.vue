@@ -2,7 +2,8 @@
 import { ItemSkuApi, type ItemSkuVO } from '@/api/wms/md/item/sku'
 
 const visible = defineModel<boolean>({ required: true })
-const emit = defineEmits<{ select: [sku: ItemSkuVO] }>()
+defineProps<{ allowCreate?: boolean; allowBind?: boolean }>()
+const emit = defineEmits<{ select: [sku: ItemSkuVO]; create: [] }>()
 const keyword = ref('')
 const page = ref(1)
 const total = ref(0)
@@ -26,10 +27,11 @@ const select = (sku: ItemSkuVO) => { visible.value = false; emit('select', sku) 
   <el-dialog v-model="visible" title="选择物品" width="min(520px, 95vw)" append-to-body>
     <form class="search" @submit.prevent="page = 1; load()"><el-input v-model="keyword" placeholder="输入物品名称" /><el-button native-type="submit" type="primary">查询</el-button></form>
     <div v-loading="loading" class="sku-list">
-      <button v-for="sku in rows" :key="sku.id" class="sku-option" @click="select(sku)"><strong>{{ sku.itemName }} {{ sku.name }}</strong><span>{{ sku.code || '无规格编号' }}</span></button>
+      <button v-for="sku in rows" :key="sku.id" class="sku-option" :disabled="allowBind === false" @click="select(sku)"><strong>{{ sku.itemName }} {{ sku.name }}</strong><span>{{ sku.code || '无规格编号' }}</span></button>
       <el-empty v-if="!loading && !rows.length" description="没有找到物品" />
     </div>
     <div class="pages"><el-button :disabled="page === 1" @click="page--; load()">上一页</el-button><span>{{ page }} / {{ Math.max(1, Math.ceil(total / 20)) }}</span><el-button :disabled="page * 20 >= total" @click="page++; load()">下一页</el-button></div>
+    <template v-if="allowCreate" #footer><el-button type="primary" plain @click="visible = false; emit('create')">新建物品</el-button></template>
   </el-dialog>
 </template>
 
