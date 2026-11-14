@@ -94,9 +94,8 @@
         <el-button :disabled="!formData.details?.length || formLoading || scanLoading" plain type="primary" @click="startScan">{{ scanReady ? '重新清零' : '清零并开始扫码' }}</el-button>
         <template v-if="scanReady">
           <ScanItemScope v-model="scanSku" />
-          <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描物品码或序列号" @keyup.enter="scanCount" />
-          <el-button :loading="scanLoading" plain type="primary" @click="scanCount">扫码录入</el-button>
-          <ScanButton label="连续扫码" continuous :process-scan="queueScan" />
+
+          <ScanButton variant="standard" label="扫码或输入" continuous :process-scan="queueScan" />
         </template>
         </template>
       </DetailEntryMethods>
@@ -279,7 +278,6 @@ defineOptions({ name: 'WmsCheckOrderForm' })
 
 const { t } = useI18n()
 const message = useMessage()
-const scanValue = ref('')
 const scanSku = ref<ItemSkuVO>()
 const scanReady = ref(false)
 const pendingScans = ref(0)
@@ -381,7 +379,6 @@ const isSavedPrepareOrder = computed(
 const open = async (type: string, id?: number) => {
   scanFormVersion++
   scanReady.value = false
-  scanValue.value = ''
   scanSku.value = undefined
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   formType.value = type
@@ -597,7 +594,6 @@ const startScan = async () => {
   await message.confirm('将清空整张单据的实盘数量和序列号，然后开始扫码。是否继续？')
   for (const row of formData.value.details) { row.checkQuantity = 0; row.actualSerialNos = []; row.actualPrice = 0 }
   scanReady.value = true
-  scanValue.value = ''
 }
 
 const queueScan = (raw: string) => {
@@ -636,7 +632,6 @@ const queueScan = (raw: string) => {
   scanQueue = result.then(() => {})
   return result
 }
-const scanCount = async () => { const value = scanValue.value.trim(); if (!value) return; scanValue.value = ''; const result = await queueScan(value); if (result.ok) message.success(result.message); else message.warning(result.message) }
 
 const handleDetailCheckQuantityChange = (detail: CheckOrderFormDetail) => {
   if (detail.price !== undefined && detail.price !== null) {

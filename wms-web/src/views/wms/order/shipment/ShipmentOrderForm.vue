@@ -84,10 +84,10 @@
         </template>
         <template #import><ShipmentImport :warehouse-id="formData.warehouseId" @imported="handleImported" /></template>
         <template #scan>
-        <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
+
         <ScanItemScope v-model="scanSku" />
-        <el-button :loading="scanLoading" :disabled="!formData.warehouseId" plain type="primary" @click="addScannedItem">扫码添加</el-button>
-          <ScanButton label="连续扫码" continuous :process-scan="queueScan" />
+
+          <ScanButton variant="standard" label="扫码或输入" continuous :disabled="!formData.warehouseId" :process-scan="queueScan" />
         </template>
       </DetailEntryMethods>
 
@@ -268,7 +268,6 @@ defineOptions({ name: 'WmsShipmentOrderForm' })
 
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
-const scanValue = ref('')
 const scanSku = ref<ItemSkuVO>()
 const pendingScans = ref(0)
 const scanLoading = computed(() => pendingScans.value > 0)
@@ -334,7 +333,6 @@ const isSavedPrepareOrder = computed(
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
   scanFormVersion++
-  scanValue.value = ''
   scanSku.value = undefined
   loadColumnOrder()
   approvalEnabled.value = (await ApprovalApi.config()).enabled
@@ -412,7 +410,6 @@ const queueScan = (raw: string) => {
   scanQueue = result.then(() => {})
   return result
 }
-const addScannedItem = async () => { const value = scanValue.value.trim(); if (!value) return; scanValue.value = ''; const result = await queueScan(value); if (result.ok) message.success(result.message); else message.warning(result.message) }
 
 function normalizeDetails(details: ShipmentOrderDetailVO[]) {
   return details.map((detail) => ({

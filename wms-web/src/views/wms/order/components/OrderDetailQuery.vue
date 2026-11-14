@@ -2,12 +2,14 @@
 import request from '@/config/axios'
 import { ElDialog, ElMessage } from 'element-plus'
 import { formatDate } from '@/utils/formatTime'
-import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import { DICT_TYPE, getDictLabel, getIntDictOptions } from '@/utils/dict'
+import { toCsv } from './detail-export'
 import ReceiptOrderDetail from '../receipt/ReceiptOrderDetail.vue'
 import ShipmentOrderDetail from '../shipment/ShipmentOrderDetail.vue'
 const props = defineProps<{ direction: 'receipt' | 'shipment'; inline?: boolean }>()
 const visible = ref(false)
 const loading = ref(false)
+const exporting = ref(false)
 const rows = ref<any[]>([])
 const total = ref(0)
 const dates = ref<string[]>([])
@@ -79,6 +81,24 @@ const search = () => {
   query.pageNo = 1; load()
 }
 const reset = () => { Object.keys(query).forEach((key) => delete query[key]); Object.assign(query, { pageNo: 1, pageSize: 10 }); dates.value = []; load() }
+const exportDetails = async () => {
+  if (exporting.value) return
+  const params = { ...query, direction: props.direction, startTime: dates.value?.[0], endTime: dates.value?.[1], pageSize: 100 }
+  const headers: Array<[string, string]> = [ ['no','单据号'], ['status','状态'], ['type','类型'], ['orderTime','单据日期'], ['warehouseName','仓库'], ['merchantName','供应商/客户'], ['itemName','物品名称'], ['itemCode','物品编号'], ['skuName','规格名称'], ['skuCode','规格编号'], ['itemUnit','单位'], ['locationName','库位'], ['locationCode','库位编号'], ['batchNo','批次号'], ['arrivalId','到货记录'], ['palletNo','托盘号'], ['boxNo','箱号'], ['rollNo','卷号'], ['productionDate','生产日期'], ['expirationDate','到期日期'], ['netLength','净长(cm)'], ['grossLength','毛长(cm)'], ['netWeight','净重(kg)'], ['grossWeight','毛重(kg)'], ['length','长(cm)'], ['width','宽(cm)'], ['height','高(cm)'], ['quantity','数量'], ['price','单据单价'], ['arrivalCostPrice','到货成本'], ['salesPrice','销售价'], ['totalPrice','金额'], ['serialNos','序列号'], ['bizOrderNo','业务单号'], ['remark','备注'] ]
+  exporting.value = true
+  try {
+    const all: any[] = []
+    for (let pageNo = 1; ; pageNo++) {
+      const result = await request.get({ url: '/wms/order-detail-query/page', params: { ...params, pageNo } })
+      all.push(...result.list)
+      if (!result.list.length || all.length >= result.total) break
+    }
+    const data = all.map(row => headers.map(([key]) => key === 'status' ? getDictLabel(DICT_TYPE.WMS_ORDER_STATUS, row[key]) : key === 'type' ? getDictLabel(props.direction === 'receipt' ? DICT_TYPE.WMS_RECEIPT_ORDER_TYPE : DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE, row[key]) : ['orderTime','productionDate','expirationDate'].includes(key) ? (row[key] ? dateText(row[key]) : '') : row[key]))
+    const blob = new Blob([toCsv([headers.map(([, label]) => label), ...data])], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob), link = document.createElement('a')
+    link.href = url; link.download = `${props.direction === 'receipt' ? '入库' : '出库'}明细.csv`; link.click(); URL.revokeObjectURL(url)
+  } finally { exporting.value = false }
+}
 const open = () => { visible.value = true; search() }
 onMounted(() => { if (props.inline) search() })
 defineExpose({ open })
@@ -90,7 +110,7 @@ defineExpose({ open })
       <el-form-item label="状态"><el-select v-model="query.status" clearable style="width: 150px"><el-option v-for="item in getIntDictOptions(DICT_TYPE.WMS_ORDER_STATUS)" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
       <el-form-item label="类型"><el-select v-model="query.type" clearable style="width: 150px"><el-option v-for="item in getIntDictOptions(direction === 'receipt' ? DICT_TYPE.WMS_RECEIPT_ORDER_TYPE : DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE)" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
       <el-form-item label="单据日期"><el-date-picker v-model="dates" type="daterange" value-format="YYYY-MM-DD HH:mm:ss" :default-time="[new Date('2000-01-01 00:00:00'), new Date('2000-01-01 23:59:59')]" start-placeholder="开始日期" end-placeholder="结束日期" /></el-form-item>
-      <el-form-item><el-button type="primary" @click="search">查询</el-button><el-button @click="reset">重置</el-button><el-button @click="advancedVisible = !advancedVisible">{{ advancedVisible ? '收起高级筛选' : '高级筛选' }}</el-button><el-button @click="openSettings">表格设置</el-button></el-form-item>
+      <el-form-item><el-button type="primary" @click="search">查询</el-button><el-button @click="reset">重置</el-button><el-button @click="advancedVisible = !advancedVisible">{{ advancedVisible ? '收起高级筛选' : '高级筛选' }}</el-button><el-button @click="openSettings">表格设置</el-button><el-button type="success" plain :loading="exporting" @click="exportDetails">导出明细</el-button></el-form-item>
     </el-form>
     <div v-show="advancedVisible" class="advanced-filters">
       <div class="filter-group">

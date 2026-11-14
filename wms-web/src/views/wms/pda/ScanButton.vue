@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-const props = withDefaults(defineProps<{ variant?: 'compact' | 'card'; label?: string; continuous?: boolean; disabled?: boolean; processScan?: (value: string) => Promise<{ ok: boolean; message: string; bindable?: boolean }> }>(), { variant: 'compact', label: '扫码', continuous: false, disabled: false })
+const props = withDefaults(defineProps<{ variant?: 'compact' | 'card' | 'standard'; label?: string; continuous?: boolean; disabled?: boolean; processScan?: (value: string) => Promise<{ ok: boolean; message: string; bindable?: boolean }> }>(), { variant: 'compact', label: '扫码', continuous: false, disabled: false })
 const emit = defineEmits<{ scan: [value: string]; bind: [value: string] }>()
 const visible = ref(false), text = ref(''), active = ref(false), video = ref<HTMLVideoElement>()
 const input = ref<{ focus: () => void }>()
@@ -84,6 +84,7 @@ onBeforeUnmount(() => { stop(); audio?.close() })
 .scan-trigger { box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-width:72px; min-height:44px; padding:0 12px; border:1px solid #d7e6ff; border-radius:12px; background:#edf4ff; color:#2462e9; font-size:14px; font-weight:650; cursor:pointer; white-space:nowrap; }
 .scan-trigger svg { width:20px; height:20px; flex:none; }
 .scan-trigger--card { display:flex; flex-direction:column; gap:9px; width:100%; min-height:104px; border-color:#e1ebff; border-radius:16px; background:linear-gradient(150deg,#eff5ff,#e5efff); color:#213b65; font-size:15px; }
+.scan-trigger--standard { min-height:32px; border-radius:4px; padding:0 15px; background:var(--el-color-primary-light-9); border-color:var(--el-color-primary-light-5); color:var(--el-color-primary); font-size:14px; font-weight:500; }
 .scan-trigger--card svg { width:29px; height:29px; color:#2867ed; }
 .scan-trigger:focus-visible { outline:3px solid #95b6ff; outline-offset:2px; }
 .scan-intro { display:flex; align-items:center; gap:12px; margin-bottom:18px; color:#1b3152; }.scan-intro strong { font-size:15px; }.scan-intro p { margin:4px 0 0; color:#8190a5; font-size:13px; }.scan-icon { display:grid; place-items:center; width:44px; height:44px; border-radius:13px; background:#edf3ff; color:#245eea; font-size:26px; }.scan-video { display:block; width:100%; max-height:45vh; margin-top:12px; border-radius:12px; background:#101828; object-fit:cover; }.scan-result { padding:10px 12px; margin-top:10px; border-radius:10px; color:#16713c; background:#eaf8ef; overflow-wrap:anywhere; }.scan-result.failed { color:#ba3737; background:#fff0f0; }.scan-summary { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; color:#53657d; font-size:13px; }</style>

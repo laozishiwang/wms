@@ -23,7 +23,6 @@ const code = ref('')
 const pickerOpen = ref(false)
 const sku = ref<ItemSkuVO>()
 const scanSku = ref<ItemSkuVO>()
-const pickerForScan = ref(false)
 const row = reactive<any>({ quantity: 1, serialNos: [] })
 const loading = ref(false)
 const details = ref<any[]>([])
@@ -91,13 +90,13 @@ const find = async (picked?: ItemSkuVO) => {
     row.quantity = quantity
   }
 }
-const pickItem = (item: ItemSkuVO) => { if (pickerForScan.value) { scanSku.value = item; pickerForScan.value = false } else find(item) }
+const pickItem = (item: ItemSkuVO) => { scanSku.value = item; find(item) }
 const add = () => {
   if (!sku.value?.id || !target.value || row.arrivalId === undefined || !row.quantity || row.quantity <= 0) { ElMessage.warning('请选择物品、目标仓库和到货记录，并填写数量'); return }
   if (target.value === props.sourceWarehouseId && row.sourceLocationId === row.targetLocationId) { ElMessage.warning('同仓移库的来源和目标库位不能相同'); return }
   if (row.serialNos.length > row.quantity || new Set(row.serialNos).size !== row.serialNos.length || details.value.some(d => d.serialNos.some((v: string) => row.serialNos.includes(v)))) { ElMessage.warning('序列号重复或数量超过移库数量'); return }
   details.value.push({ ...row, serialNos: [...row.serialNos], skuId: sku.value.id, skuLabel: `${sku.value.itemName || ''} ${sku.value.name || ''}（${sku.value.code}）`, sourceWarehouseId: props.sourceWarehouseId, targetWarehouseId: target.value, locationId: row.sourceLocationId })
-  sku.value = undefined; code.value = ''
+  sku.value = undefined; scanSku.value = undefined; code.value = ''
 }
 const save = async () => {
   if (sku.value) { ElMessage.warning('请先添加或取消当前物品'); return }
@@ -121,7 +120,7 @@ const save = async () => {
   <section class="movement-create">
     <button class="back" @click="emit('close')">‹ 返回</button><h2>{{ order ? '修改' : '新建' }}移库草稿</h2>
     <div class="detail-panel"><p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select></div>
-    <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find()"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><div class="picker-actions"><ScanButton @scan="(value: string) => { code = value; find() }" /><el-button @click="pickerForScan = false; pickerOpen = true">选择物品</el-button></div><el-button link type="primary" @click="pickerForScan = true; pickerOpen = true">{{ scanSku ? `扫码物品：${scanSku.itemName || ''} ${scanSku.name || ''}` : '指定扫码物品' }}</el-button><el-button v-if="scanSku" link @click="scanSku = undefined">清除</el-button><SkuPicker v-model="pickerOpen" @select="pickItem" /></div>
+    <div class="scan-panel"><p>选择物品</p><div class="picker-actions"><ScanButton label="扫码识别" @scan="(value: string) => { code = value; find() }" /><el-button class="select-item" @click="pickerOpen = true">从列表选择</el-button></div><form @submit.prevent="find()"><el-input v-model="code" placeholder="输入物品码或扫码枪输入" /><el-button native-type="submit" type="primary" plain>确定</el-button></form><div v-if="scanSku" class="scan-scope"><span>当前物品：{{ scanSku.itemName }} {{ scanSku.name }}</span><el-button link type="primary" @click="scanSku = undefined">清除</el-button></div><SkuPicker v-model="pickerOpen" @select="pickItem" /></div>
     <template v-if="sku">
       <div class="selected-item"><strong>{{ sku.itemName }} {{ sku.name }}</strong><span>{{ sku.code }}</span></div>
       <div class="detail-panel"><h3>来源库存</h3><p>批次</p><BatchSelect v-model="row.batchNo" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" @update:model-value="row.sourceLocationId = undefined; row.arrivalId = undefined" />
@@ -129,7 +128,7 @@ const save = async () => {
         <p>到货记录</p><ArrivalSelect v-model="row.arrivalId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :location-id="row.sourceLocationId" :batch-no="row.batchNo" /></div>
       <div class="detail-panel"><h3>目标位置</h3><PlacePicker v-model="row.targetLocationId" :warehouse-id="target" /></div>
       <div class="detail-panel"><h3>移库数量</h3><el-input-number v-model="row.quantity" :min="0.01" :precision="2" /><p>序列号 <SerialEditor v-model="row.serialNos" /></p></div>
-    </template><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="findRequestId++; sku = undefined; code = ''">取消当前物品</el-button></p>
+    </template><p v-if="sku" class="action-row"><el-button class="add-action" @click="add">添加明细</el-button><el-button @click="findRequestId++; sku = undefined; scanSku = undefined; code = ''">取消当前物品</el-button></p>
     <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index" class="move-item"><div class="move-item-head"><strong>{{ item.skuLabel }}</strong><el-button link type="danger" @click="details.splice(index, 1)">删除</el-button></div><p>批次：{{ item.batchNo || '无批次' }} · {{ item.arrivalId ? `到货 #${item.arrivalId}` : '历史未分配' }}</p><div class="move-route"><div><span>来源</span><strong>{{ placePath(sourcePlaces, item.sourceLocationId) }}</strong></div><div><span>目标</span><strong>{{ placePath(targetPlaces, item.targetLocationId) }}</strong><el-button link type="primary" @click="showTargetLocation(index)">更换</el-button></div></div><div class="move-quantity"><span>移库数量</span><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /></div><details class="move-extra"><summary>单价与序列号</summary><p>单价（选填，用于移库金额）</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p></details></article>
     <el-dialog :model-value="editingLocation !== undefined" title="更换目标库位" width="min(520px, 95vw)" append-to-body @close="editingLocation = undefined"><PlacePicker v-model="targetLocation" :warehouse-id="target" /><template #footer><el-button @click="editingLocation = undefined">取消</el-button><el-button type="primary" @click="saveTargetLocation">确定</el-button></template></el-dialog>
     <p class="save-row"><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>
@@ -148,7 +147,9 @@ article p { font-weight: normal; }
 .scan-panel, .detail-panel { margin: 14px 0; padding: 18px; background: #fff; border: 1px solid #e9eef7; border-radius: 18px; box-shadow: 0 8px 24px rgba(30, 59, 100, .06); }
 .scan-panel p:first-child, .detail-panel p:first-child { margin-top: 0; color: #182b47; font-size: 16px; }
 .scan-panel form { margin-bottom: 8px; }
-.picker-actions { display:flex; gap:8px; }.picker-actions > * { flex:1; }
+.picker-actions { display:flex; gap:8px; margin:12px 0; }.picker-actions > * { flex:1; }
+.picker-actions :deep(.select-item) { margin:0; border-color:#d7e6ff; background:#edf4ff; color:#2462e9; border-radius:12px; font-weight:650; }
+.scan-scope { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#52637a; font-size:13px; }
 .selected-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:15px 18px; margin:16px 0 0; border-radius:14px; background:#eaf2ff; color:#1b3764; }.selected-item span { color:#6980a1; font-size:13px; }.detail-panel h3 { margin:0 0 14px; color:#182b47; font-size:16px; }
 .move-item-head,.move-quantity { display:flex; align-items:center; justify-content:space-between; gap:12px; }.move-item-head strong { min-width:0; overflow-wrap:anywhere; }.move-route { margin:12px 0; padding:4px 12px; border-radius:12px; background:#f5f8fd; }.move-route div { display:flex; align-items:center; gap:10px; min-height:42px; }.move-route div + div { border-top:1px solid #e5edf8; }.move-route span { flex:none; color:#8191a8; font-size:13px; }.move-route strong { flex:1; font-size:14px; font-weight:500; }.move-quantity { margin-top:14px; color:#52637a; }.move-quantity :deep(.el-input-number) { width:130px; }.move-extra { margin-top:14px; padding-top:12px; border-top:1px solid #edf1f6; }.move-extra summary { color:#627693; font-size:13px; cursor:pointer; }
 .scan-panel :deep(.el-button), .detail-panel :deep(.el-button) { min-height: 44px; border-radius: 10px; }
