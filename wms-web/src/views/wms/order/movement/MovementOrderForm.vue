@@ -54,7 +54,7 @@
         </el-col>
       </el-row>
 
-      <div class="mb-12px flex items-center justify-between">
+      <div class="mb-12px flex flex-wrap items-center gap-12px">
         <span class="text-14px font-bold">移库明细</span>
         <el-tooltip content="请先选择来源仓库和目标仓库" :disabled="canAddDetail" placement="top">
           <span>
@@ -64,6 +64,9 @@
             </el-button>
           </span>
         </el-tooltip>
+        <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
+        <ScanItemScope v-model="scanSku" />
+        <el-button :loading="scanLoading" :disabled="!canAddDetail" plain type="primary" @click="addScannedItem">扫码添加</el-button>
       </div>
       <el-table
         :data="formData.details"
@@ -158,7 +161,7 @@
           <el-button
             v-if="isSavedPrepareOrder && !approvalEnabled"
             v-hasPermi="['wms:movement-order:complete']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="success"
             @click="handleComplete"
           >
@@ -167,7 +170,7 @@
           <el-button
             v-if="isSavedPrepareOrder"
             v-hasPermi="['wms:movement-order:cancel']"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="danger"
             @click="handleCancel"
           >
@@ -177,7 +180,7 @@
         <div>
           <el-button
             v-if="isPrepareOrder"
-            :disabled="formLoading"
+            :disabled="formLoading || scanLoading"
             type="primary"
             @click="submitForm"
           >
@@ -196,7 +199,11 @@ const approvalEnabled = ref(true)
 import { FormRules } from 'element-plus'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
-import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
+import { listArrivalBalances, validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
+import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'
+import request from '@/config/axios'
+import type { ItemSkuVO } from '@/api/wms/md/item/sku'
+import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import { MovementOrderApi, MovementOrderVO } from '@/api/wms/order/movement'
 import { MovementOrderDetailVO } from '@/api/wms/order/movement/detail'
 import InventorySelect, {
@@ -248,6 +255,10 @@ const formRules = reactive<FormRules>({
 })
 const formRef = ref()
 const inventorySelectRef = ref()
+const scanValue = ref('')
+const scanSku = ref<ItemSkuVO>()
+const scanLoading = ref(false)
+let scanFormVersion = 0
 
 const isPrepareOrder = computed(
   () =>
@@ -266,6 +277,9 @@ const canAddDetail = computed(
 
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
+  scanFormVersion++
+  scanValue.value = ''
+  scanSku.value = undefined
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   dialogVisible.value = true
   dialogTitle.value = t('action.' + type)
@@ -303,6 +317,37 @@ function buildDetail(inventory: InventorySelectRow): MovementOrderDetailVO {
     price: undefined,
     totalPrice: undefined
   }
+}
+
+const addScannedItem = async () => {
+  const value = scanValue.value.trim(), source = formData.value.sourceWarehouseId, target = formData.value.targetWarehouseId, formVersion = scanFormVersion
+  if (!value || !source || !target || scanLoading.value) return
+  const scopeId = scanSku.value?.id
+  scanLoading.value = true
+  try {
+    let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
+    let parsed: Record<string, string> | null = null
+    if (!skus.length) {
+      parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value, skuId: scopeId } })
+      if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
+    }
+    if (skus.length !== 1 || !skus[0].id) { message.warning('未找到唯一物品规格'); return }
+    if (scopeId && skus[0].id !== scopeId) { message.warning('扫描的物品与指定扫码物品不一致'); return }
+    const sku = skus[0], quantity = parsed?.quantity ? Number(parsed.quantity) : 1
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
+    const balances = await listArrivalBalances(source, sku.id!)
+    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.sourceWarehouseId !== source || formData.value.targetWarehouseId !== target) { message.warning('仓库或单据已变更，请重新扫码'); return }
+    const candidates = balances.filter(item => Number(item.quantity) > 0 && matchesScanAttributes({ ...item }, parsed || {}))
+    if (candidates.length !== 1) { message.warning(candidates.length ? '匹配到多条来源库存，请手动选择' : '没有匹配的来源库存'); return }
+    const stock = candidates[0], arrivalId = stock.arrivalId ?? 0
+    const rows = (formData.value.details || []).filter(item => item.skuId === sku.id && (item.sourceLocationId ?? null) === stock.locationId && (item.batchNo || '') === (stock.batchNo || '') && item.arrivalId === arrivalId)
+    if (rows.some(item => item.serialNos?.length)) { message.warning('明细含序列号，请手动核对'); return }
+    const total = rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0) + quantity
+    if (Number(total.toFixed(2)) > Number(stock.quantity)) { message.warning('数量超过可用库存'); return }
+    formData.value.details = [...(formData.value.details || []), { itemId: sku.itemId, itemCode: sku.itemCode, itemName: sku.itemName, unit: sku.unit, skuId: sku.id, skuCode: sku.code, skuName: sku.name, sourceWarehouseId: source, targetWarehouseId: target, sourceLocationId: stock.locationId ?? undefined, batchNo: stock.batchNo || undefined, arrivalId, quantity }]
+    scanValue.value = ''
+    message.success('已添加物品明细，请选择目标库位')
+  } finally { scanLoading.value = false }
 }
 
 function normalizeDetails(details: MovementOrderDetailVO[]) {

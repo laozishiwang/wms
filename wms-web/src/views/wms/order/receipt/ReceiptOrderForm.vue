@@ -81,6 +81,7 @@
           </span>
         </el-tooltip>
         <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
+        <ScanItemScope v-model="scanSku" />
         <el-button :loading="scanLoading" :disabled="!formData.warehouseId" plain type="primary" @click="addScannedItem">扫码添加</el-button>
         <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
         <el-button plain @click="downloadImportTemplate">下载导入模板</el-button>
@@ -260,6 +261,7 @@
 
 <script lang="ts" setup>
 import request from '@/config/axios'
+import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import download from '@/utils/download'
 import { ApprovalApi } from '@/api/wms/approval'
 const approvalEnabled = ref(true)
@@ -354,6 +356,7 @@ const isSavedPrepareOrder = computed(
 const open = async (type: string, id?: number) => {
   scanFormVersion++
   scanValue.value = ''
+  scanSku.value = undefined
   loadColumnOrder()
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   dialogVisible.value = true
@@ -403,6 +406,7 @@ function buildDetail(sku: ItemSkuVO): ReceiptOrderDetailVO {
 }
 
 const scanValue = ref('')
+const scanSku = ref<ItemSkuVO>()
 const scanLoading = ref(false)
 let scanFormVersion = 0
 const addScannedItem = async () => {
@@ -410,16 +414,18 @@ const addScannedItem = async () => {
   if (!value || scanLoading.value || !formData.value.warehouseId) return
   const warehouseId = formData.value.warehouseId
   const formVersion = scanFormVersion
+  const scopeId = scanSku.value?.id
   scanLoading.value = true
   try {
     let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
     let parsed: Record<string, string> | null = null
     if (skus.length === 0) {
-      parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value } })
+      parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value, skuId: scopeId } })
       if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
     }
     if (skus.length !== 1 || !skus[0].id) { message.warning('未找到唯一物品规格，请检查条码或二维码规则'); return }
-    if (!dialogVisible.value || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) { message.warning('仓库或单据已变更，请重新扫码'); return }
+    if (scopeId && skus[0].id !== scopeId) { message.warning('扫描的物品与指定扫码物品不一致'); return }
+    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) { message.warning('仓库或单据已变更，请重新扫码'); return }
     const quantity = parsed?.quantity ? Number(parsed.quantity) : 1
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
     const detail = buildDetail(skus[0])

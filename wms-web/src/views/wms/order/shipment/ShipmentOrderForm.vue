@@ -81,6 +81,7 @@
           </span>
         </el-tooltip>
         <el-input v-model="scanValue" :disabled="scanLoading" class="!w-260px" clearable placeholder="扫描或输入物品码" @keyup.enter="addScannedItem" />
+        <ScanItemScope v-model="scanSku" />
         <el-button :loading="scanLoading" :disabled="!formData.warehouseId" plain type="primary" @click="addScannedItem">扫码添加</el-button>
         <el-button plain @click="columnSettingsRef?.open()">字段排序</el-button>
         <ShipmentImport :warehouse-id="formData.warehouseId" @imported="handleImported" />
@@ -229,6 +230,7 @@ import { listArrivalBalances, validateArrivalBalances } from '@/views/wms/invent
 import { matchesScanAttributes } from '@/views/wms/pda/scan-attributes'
 import request from '@/config/axios'
 import type { ItemSkuVO } from '@/api/wms/md/item/sku'
+import ScanItemScope from '@/views/wms/order/components/ScanItemScope.vue'
 import ReceiptColumnSettings from '@/views/wms/order/receipt/ReceiptColumnSettings.vue'
 import ShipmentImport from './ShipmentImport.vue'
 import { getCurrentUserId, getTenantId } from '@/utils/auth'
@@ -261,6 +263,7 @@ defineOptions({ name: 'WmsShipmentOrderForm' })
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗
 const scanValue = ref('')
+const scanSku = ref<ItemSkuVO>()
 const scanLoading = ref(false)
 let scanFormVersion = 0
 
@@ -324,6 +327,7 @@ const isSavedPrepareOrder = computed(
 const open = async (type: string, id?: number) => {
   scanFormVersion++
   scanValue.value = ''
+  scanSku.value = undefined
   loadColumnOrder()
   approvalEnabled.value = (await ApprovalApi.config()).enabled
   dialogVisible.value = true
@@ -370,20 +374,22 @@ function buildDetail(inventory: InventorySelectRow): ShipmentOrderDetailVO {
 const addScannedItem = async () => {
   const value = scanValue.value.trim(), warehouseId = formData.value.warehouseId, formVersion = scanFormVersion
   if (!value || !warehouseId || scanLoading.value) return
+  const scopeId = scanSku.value?.id
   scanLoading.value = true
   try {
     let skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value } })
     let parsed: Record<string, string> | null = null
     if (!skus.length) {
-      parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value } })
+      parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value, skuId: scopeId } })
       if (parsed) skus = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
     }
     if (skus.length !== 1 || !skus[0].id) { message.warning('未找到唯一物品规格'); return }
+    if (scopeId && skus[0].id !== scopeId) { message.warning('扫描的物品与指定扫码物品不一致'); return }
     const sku = skus[0]
     const quantity = parsed?.quantity ? Number(parsed.quantity) : 1
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { message.warning('二维码数量最多支持两位小数'); return }
     const balances = await listArrivalBalances(warehouseId, sku.id!)
-    if (!dialogVisible.value || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) { message.warning('仓库或单据已变更，请重新扫码'); return }
+    if (!dialogVisible.value || scopeId !== scanSku.value?.id || formVersion !== scanFormVersion || formData.value.warehouseId !== warehouseId) { message.warning('仓库或单据已变更，请重新扫码'); return }
     const candidates = balances.filter(item => Number(item.quantity) > 0 && matchesScanAttributes({ ...item }, parsed || {}))
     if (candidates.length !== 1) { message.warning(candidates.length ? '匹配到多条库存，请手动选择' : '没有匹配的可用库存'); return }
     const stock = candidates[0], arrivalId = stock.arrivalId ?? 0
