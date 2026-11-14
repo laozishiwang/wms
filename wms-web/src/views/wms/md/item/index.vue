@@ -67,6 +67,7 @@
               <Icon class="mr-5px" icon="ep:download" />
               导出
             </el-button>
+            <el-button v-hasPermi="['wms:item:query']" @click="scanRulesRef?.open()">二维码规则</el-button>
           </el-form-item>
         </el-form>
       </ContentWrap>
@@ -169,6 +170,7 @@
 
   <!-- 表单弹窗：添加/修改 -->
   <ItemForm ref="formRef" @success="getList" />
+  <ScanRules ref="scanRulesRef" />
 </template>
 
 <script lang="ts" setup>
@@ -176,6 +178,7 @@ import download from '@/utils/download'
 import { ItemApi, ItemVO } from '@/api/wms/md/item'
 import { ItemSkuVO } from '@/api/wms/md/item/sku'
 import ItemForm from './ItemForm.vue'
+import ScanRules from './ScanRules.vue'
 import ItemCategoryTree from './category/components/ItemCategoryTree.vue'
 import ItemBrandSelect from './brand/components/ItemBrandSelect.vue'
 import { isNullOrUnDef } from '@/utils/is'
@@ -183,6 +186,7 @@ import { formatDimensionText, formatPrice, formatWeight } from '@/views/wms/util
 
 /** WMS 物品管理 */
 defineOptions({ name: 'WmsItem' })
+const scanRulesRef = ref<InstanceType<typeof ScanRules>>()
 
 const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化

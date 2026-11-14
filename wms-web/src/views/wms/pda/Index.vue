@@ -322,7 +322,28 @@ const selectWarehouse = async () => {
 const clearWarehouse = async () => { if (creatingReceipt.value && !(await confirmDiscard())) return; warehouseId.value = undefined; warehouseName.value = ''; receiptRows.value = []; selectedLocation.value = undefined; search() }
 const scanReceiptSku = async (code: string) => {
   if (!code) return '扫码内容为空'
-  const unique: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
+  let unique: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
+  let parsed: Record<string, string> | null = null
+  if (unique.length === 0 && tab.value === 'receipt') {
+    parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value: code } })
+    if (parsed) {
+      unique = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
+      if (unique.length !== 1 || !unique[0].id) return '二维码中的规格编号未找到或不唯一，请检查规则和物品资料'
+      const quantity = parsed.quantity ? Number(parsed.quantity) : 1
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) return '二维码中的数量最多支持两位小数'
+      const numericFields = ['netLength', 'grossLength', 'netWeight', 'grossWeight', 'length', 'width', 'height', 'price', 'salesPrice'] as const
+      const values: Partial<(typeof receiptRows.value)[number]> = {}
+      for (const field of numericFields) {
+        if (parsed[field] !== undefined) {
+          const number = Number(parsed[field])
+          if (!Number.isFinite(number)) return '二维码中的数值超出支持范围'
+          values[field] = number
+        }
+      }
+      receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, netLength: unique[0].netLength, grossLength: unique[0].grossLength, netWeight: unique[0].netWeight, grossWeight: unique[0].grossWeight, length: unique[0].length, width: unique[0].width, height: unique[0].height, price: unique[0].costPrice, salesPrice: unique[0].sellingPrice, ...values, batchNo: parsed.batchNo, palletNo: parsed.palletNo, boxNo: parsed.boxNo, rollNo: parsed.rollNo })
+      return
+    }
+  }
   if (unique.length !== 1 || !unique[0].id) return unique.length ? '扫码结果不唯一，请使用规格编号' : `未找到物品：${code}`
   if (tab.value === 'shipment') {
     if (!warehouseId.value) return '请先选择仓库'
@@ -346,7 +367,7 @@ const queueReceiptScan = (value: string) => {
   if (!code) return Promise.resolve({ ok: false, message: '扫码内容为空' })
   receiptScan.value = ''
   pendingScans.value++
-  const result = scanQueue.then(async () => { const error = await scanReceiptSku(code); return error ? { ok: false, message: error, bindable: tab.value === 'receipt' && error.startsWith('未找到物品：') && (checkPermi(['wms:item:update']) || checkPermi(['wms:item:create'])) } : { ok: true, message: `已添加：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingScans.value-- })
+  const result = scanQueue.then(async () => { const error = await scanReceiptSku(code); return error ? { ok: false, message: error, bindable: tab.value === 'receipt' && error.startsWith('未找到物品：') && (checkPermi(['wms:item:update']) || checkPermi(['wms:item:create'])) } : { ok: true, message: `已添加：${code}` } }).catch((error) => ({ ok: false, message: typeof error === 'string' && error !== 'error' ? error : error instanceof Error ? error.message : `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingScans.value-- })
   scanQueue = result.then(() => {})
   return result
 }
