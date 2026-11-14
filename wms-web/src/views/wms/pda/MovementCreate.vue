@@ -10,10 +10,11 @@ import BatchSelect from '@/views/wms/inventory/components/BatchSelect.vue'
 import PlacePicker from './PlacePicker.vue'
 import ArrivalSelect from '@/views/wms/inventory/components/ArrivalSelect.vue'
 import SerialEditor from '@/views/wms/order/components/SerialEditor.vue'
-import { validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
+import { listArrivalBalances, validateArrivalBalances } from '@/views/wms/inventory/components/arrival-api'
 import { buildMovementDraftDetails } from './draft-details'
 import { placePath, type StoragePlace } from './place'
 import { checkPermi } from '@/utils/permission'
+import { matchesScanAttributes } from './scan-attributes'
 const props = defineProps<{ sourceWarehouseId: number; order?: any }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const warehouses = ref<WarehouseVO[]>([])
@@ -21,6 +22,8 @@ const target = ref<number>(props.sourceWarehouseId)
 const code = ref('')
 const pickerOpen = ref(false)
 const sku = ref<ItemSkuVO>()
+const scanSku = ref<ItemSkuVO>()
+const pickerForScan = ref(false)
 const row = reactive<any>({ quantity: 1, serialNos: [] })
 const loading = ref(false)
 const details = ref<any[]>([])
@@ -63,11 +66,32 @@ const find = async (picked?: ItemSkuVO) => {
   const requestId = ++findRequestId
   sku.value = undefined
   Object.assign(row, { batchNo: undefined, sourceLocationId: undefined, targetLocationId: undefined, arrivalId: undefined, quantity: 1, serialNos: [] })
-  const found: ItemSkuVO[] = picked ? [picked] : await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } })
+  let found: ItemSkuVO[] = picked ? [picked] : await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } })
+  let parsed: Record<string, string> | null = null
+  if (!picked && found.length === 0) {
+    parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value: code.value.trim(), skuId: scanSku.value?.id } })
+    if (parsed) found = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
+  }
   if (requestId !== findRequestId) return
   if (found.length !== 1) { ElMessage.warning('未找到唯一物品规格'); return }
+  if (!picked && scanSku.value && found[0].id !== scanSku.value.id) { ElMessage.warning('扫描的物品与指定扫码物品不一致'); return }
   sku.value = found[0]
+  if (parsed && sku.value.id) {
+    const quantity = parsed.quantity ? Number(parsed.quantity) : 1
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) { ElMessage.warning('二维码中的数量最多支持两位小数'); sku.value = undefined; return }
+    const balances = await listArrivalBalances(props.sourceWarehouseId, sku.value.id)
+    if (requestId !== findRequestId) return
+    const candidates = balances.filter(item => Number(item.quantity) > 0 && matchesScanAttributes({ ...item }, parsed!))
+    if (candidates.length !== 1) { ElMessage.warning(candidates.length ? '匹配到多条库存，请手动选择来源库存' : '未找到匹配库存，请手动选择来源库存'); return }
+    const stock = candidates[0]
+    if (quantity > Number(stock.quantity)) { ElMessage.warning('二维码数量超过可用库存'); sku.value = undefined; return }
+    row.batchNo = stock.batchNo || undefined
+    row.sourceLocationId = stock.locationId ?? undefined
+    row.arrivalId = stock.arrivalId ?? 0
+    row.quantity = quantity
+  }
 }
+const pickItem = (item: ItemSkuVO) => { if (pickerForScan.value) { scanSku.value = item; pickerForScan.value = false } else find(item) }
 const add = () => {
   if (!sku.value?.id || !target.value || row.arrivalId === undefined || !row.quantity || row.quantity <= 0) { ElMessage.warning('请选择物品、目标仓库和到货记录，并填写数量'); return }
   if (target.value === props.sourceWarehouseId && row.sourceLocationId === row.targetLocationId) { ElMessage.warning('同仓移库的来源和目标库位不能相同'); return }
@@ -97,7 +121,7 @@ const save = async () => {
   <section class="movement-create">
     <button class="back" @click="emit('close')">‹ 返回</button><h2>{{ order ? '修改' : '新建' }}移库草稿</h2>
     <div class="detail-panel"><p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select></div>
-    <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find()"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><div class="picker-actions"><ScanButton @scan="(value: string) => { code = value; find() }" /><el-button @click="pickerOpen = true">选择物品</el-button></div><SkuPicker v-model="pickerOpen" @select="find" /></div>
+    <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find()"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><div class="picker-actions"><ScanButton @scan="(value: string) => { code = value; find() }" /><el-button @click="pickerForScan = false; pickerOpen = true">选择物品</el-button></div><el-button link type="primary" @click="pickerForScan = true; pickerOpen = true">{{ scanSku ? `扫码物品：${scanSku.itemName || ''} ${scanSku.name || ''}` : '指定扫码物品' }}</el-button><el-button v-if="scanSku" link @click="scanSku = undefined">清除</el-button><SkuPicker v-model="pickerOpen" @select="pickItem" /></div>
     <template v-if="sku">
       <div class="selected-item"><strong>{{ sku.itemName }} {{ sku.name }}</strong><span>{{ sku.code }}</span></div>
       <div class="detail-panel"><h3>来源库存</h3><p>批次</p><BatchSelect v-model="row.batchNo" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" @update:model-value="row.sourceLocationId = undefined; row.arrivalId = undefined" />
@@ -105,7 +129,7 @@ const save = async () => {
         <p>到货记录</p><ArrivalSelect v-model="row.arrivalId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :location-id="row.sourceLocationId" :batch-no="row.batchNo" /></div>
       <div class="detail-panel"><h3>目标位置</h3><PlacePicker v-model="row.targetLocationId" :warehouse-id="target" /></div>
       <div class="detail-panel"><h3>移库数量</h3><el-input-number v-model="row.quantity" :min="0.01" :precision="2" /><p>序列号 <SerialEditor v-model="row.serialNos" /></p></div>
-    </template><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
+    </template><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="findRequestId++; sku = undefined; code = ''">取消当前物品</el-button></p>
     <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index" class="move-item"><div class="move-item-head"><strong>{{ item.skuLabel }}</strong><el-button link type="danger" @click="details.splice(index, 1)">删除</el-button></div><p>批次：{{ item.batchNo || '无批次' }} · {{ item.arrivalId ? `到货 #${item.arrivalId}` : '历史未分配' }}</p><div class="move-route"><div><span>来源</span><strong>{{ placePath(sourcePlaces, item.sourceLocationId) }}</strong></div><div><span>目标</span><strong>{{ placePath(targetPlaces, item.targetLocationId) }}</strong><el-button link type="primary" @click="showTargetLocation(index)">更换</el-button></div></div><div class="move-quantity"><span>移库数量</span><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /></div><details class="move-extra"><summary>单价与序列号</summary><p>单价（选填，用于移库金额）</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p></details></article>
     <el-dialog :model-value="editingLocation !== undefined" title="更换目标库位" width="min(520px, 95vw)" append-to-body @close="editingLocation = undefined"><PlacePicker v-model="targetLocation" :warehouse-id="target" /><template #footer><el-button @click="editingLocation = undefined">取消</el-button><el-button type="primary" @click="saveTargetLocation">确定</el-button></template></el-dialog>
     <p class="save-row"><el-button type="primary" :loading="loading" @click="save">保存草稿（{{ details.length }} 条）</el-button></p>

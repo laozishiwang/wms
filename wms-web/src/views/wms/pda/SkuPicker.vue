@@ -2,7 +2,7 @@
 import { ItemSkuApi, type ItemSkuVO } from '@/api/wms/md/item/sku'
 
 const visible = defineModel<boolean>({ required: true })
-defineProps<{ allowCreate?: boolean; allowBind?: boolean }>()
+withDefaults(defineProps<{ allowCreate?: boolean; allowBind?: boolean }>(), { allowBind: true })
 const emit = defineEmits<{ select: [sku: ItemSkuVO]; create: [] }>()
 const keyword = ref('')
 const page = ref(1)

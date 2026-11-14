@@ -612,7 +612,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <label class="info-row"><span>备注</span><input v-model="receiptRemark" maxlength="255" placeholder="选填" /></label></div>
       <div class="receipt-tools"><h3>物品明细</h3>
       <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker()"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous :process-scan="queueReceiptScan" @bind="bindScannedBarcode" /></div>
-      <div v-if="tab === 'receipt'"><el-button link type="primary" @click="openSkuPicker(true)">{{ scanSelectedSku ? `扫码物品：${scanSelectedSku.itemName || ''} ${scanSelectedSku.name || ''}` : '指定扫码物品' }}</el-button><el-button v-if="scanSelectedSku" link @click="scanSelectedSku = undefined">清除</el-button></div>
+      <div><el-button link type="primary" @click="openSkuPicker(true)">{{ scanSelectedSku ? `扫码物品：${scanSelectedSku.itemName || ''} ${scanSelectedSku.name || ''}` : '指定扫码物品' }}</el-button><el-button v-if="scanSelectedSku" link @click="scanSelectedSku = undefined">清除</el-button></div>
       <SkuPicker v-model="barcodePickerOpen" :allow-create="checkPermi(['wms:item:create'])" :allow-bind="checkPermi(['wms:item:update'])" @select="confirmBarcodeSku" @create="newBarcodeItemOpen = true" />
       <NewBarcodeItem v-model="newBarcodeItemOpen" :barcode="unboundBarcode" @created="manualReceiptScan" />
       <form class="search manual-scan" @submit.prevent="manualReceiptScan(receiptScan)"><input v-model="receiptScan" placeholder="扫码枪输入或手动输入物品条码" /><button>添加</button></form><p v-if="pendingScans">正在处理 {{ pendingScans }} 条扫码</p></div>
