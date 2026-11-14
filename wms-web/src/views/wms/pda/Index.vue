@@ -127,6 +127,7 @@ const openInventory = async (row: any) => {
   } finally { if (inventoryExpanded.value === key) inventoryLoading.value = false }
 }
 const scanCode = ref('')
+const checkScanReady = ref(false)
 const warehouseCode = ref('')
 const tabWarehouses = reactive<Partial<Record<Tab, { id?: number; name: string }>>>({})
 const warehouseId = computed({ get: () => tabWarehouses[tab.value]?.id, set: (id) => { tabWarehouses[tab.value] = { id, name: tabWarehouses[tab.value]?.name || '' } } })
@@ -399,6 +400,7 @@ const saveReceipt = async () => {
 }
 const open = async (row: any) => {
   if (tab.value === 'inventory') return
+  checkScanReady.value = false
   selectedLocation.value = undefined
   scanCode.value = ''
   if (tab.value === 'receipt') {
@@ -416,6 +418,7 @@ const open = async (row: any) => {
   }
 }
 const scanCheck = async () => {
+  if (!checkScanReady.value) return
   const code = scanCode.value.trim()
   if (!code) return
   let matches = visibleDetails.value.filter((item) => item.skuCode === code || item.batchNo === code)
@@ -438,9 +441,14 @@ const setCheckSerials = (item: any, serials: string[]) => {
   item.checkQuantity = ordinary + serials.length
   dirty.value = true
 }
-const resetCheck = () => {
+const resetCheck = async () => {
+  try {
+    await ElMessageBox.confirm('将清空整张单据的实盘数量和实盘序列号，然后从零开始扫码。', '开始扫码盘点', { confirmButtonText: '清零并开始', cancelButtonText: '取消', type: 'warning' })
+  } catch { return }
   details.value.forEach((item) => { item.checkQuantity = 0; if (item.actualSerialNos) item.actualSerialNos = [] })
   dirty.value = true
+  scanCode.value = ''
+  checkScanReady.value = true
 }
 const saveCheck = async (notify = true) => {
   if (details.value.some((item) => Number(item.checkQuantity) < (item.actualSerialNos?.length || 0))) {
@@ -558,7 +566,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <button class="back" @click="backToList">‹ 返回列表</button><div class="check-summary"><span>盘库单</span><strong>{{ selected.no }}</strong><span>{{ selected.warehouseName }}</span><div class="check-stats"><div>明细<b>{{ details.length }}</b></div><div>账面数量<b>{{ checkBookTotal }}</b></div><div>实盘数量<b>{{ checkActualTotal }}</b></div></div></div><h2 class="check-heading">盘点明细</h2>
       <template v-if="selected.status === 0">
         <details class="check-tools"><summary>位置筛选<span v-if="selectedLocation"> · {{ selectedLocation.name }}</span></summary><PlacePicker :model-value="selectedLocation?.id" :warehouse-id="selected.warehouseId" @update:model-value="filterCheckLocation" /></details>
-        <details class="check-tools"><summary>扫码录入</summary><form class="search" @submit.prevent="scanCheck"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号" /><ScanButton @scan="(value) => { scanCode = value; scanCheck() }" /><button>录入</button></form><button class="back" @click="resetCheck">实盘数量清零</button></details>
+        <details class="check-tools"><summary>扫码盘点</summary><div class="check-scan-start"><span>{{ checkScanReady ? '已从零开始，可连续扫码' : '先清零，再开始扫码盘点' }}</span><button type="button" class="check-scan-reset" @click="resetCheck">{{ checkScanReady ? '重新清零' : '清零并开始' }}</button></div><form v-if="checkScanReady" class="search" @submit.prevent="scanCheck"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号" /><ScanButton @scan="(value) => { scanCode = value; scanCheck() }" /><button>录入</button></form></details>
       </template>
       <article v-for="item in visibleDetails" :key="item.id" class="check-item"><div class="check-item-head"><div><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p></div><span>账面 <b>{{ item.quantity }} {{ item.unit }}</b></span></div><div class="check-item-place">{{ placePath(storagePlaces, item.locationId) }}<template v-if="item.batchNo"> · 批次 {{ item.batchNo }}</template> · {{ item.arrivalId ? `到货 #${item.arrivalId}` : '历史未分配' }}</div><div class="check-item-count"><span>实盘数量</span><el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><strong v-else>{{ item.checkQuantity }} {{ item.unit }}</strong></div><div v-if="selected.status === 0" class="check-item-serial"><span>实盘序列号</span><SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></div></article>
       <div class="check-actions">
@@ -658,6 +666,7 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .receipt-info .location-search input { flex: 1; width: 0; max-width: none; border: 1px solid #dce5f1; background: #fff; }
 .receipt-info .location-search button:not(.scan-trigger) { padding: 10px; white-space: nowrap; }
 .check-summary { display: grid; gap: 6px; padding: 20px; border-radius: 18px; background: linear-gradient(130deg,#3478f7,#1b4bd2); color: #fff; }.check-summary > span { color: #dbe8ff; font-size: 13px; }.check-summary > strong { overflow-wrap: anywhere; font-size: 19px; }.check-stats { display: grid; grid-template-columns: repeat(3,1fr); margin-top: 16px; }.check-stats div { display: grid; gap: 6px; color: #dbe8ff; font-size: 13px; }.check-stats b { color: #fff; font-size: 21px; }.check-heading { margin: 24px 2px 12px; font-size: 17px; }.check-tools { margin: 12px 0; padding: 14px; border-radius: 14px; background: #fff; }.check-tools summary { color: #245eea; font-weight: 600; }.check-tools .search { padding: 12px 0; }
+.check-scan-start { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:14px; color:#61728a; font-size:14px; }.check-scan-reset { flex:none; min-height:42px; padding:0 14px; border:1px solid #dce8fa; border-radius:10px; background:#edf4ff; color:#245eea; font-weight:600; }
 .check-item-head,.check-item-count,.check-item-serial { display:flex; align-items:center; justify-content:space-between; gap:12px; }.check-item-head p { margin:5px 0 0; font-size:13px; }.check-item-head > span { flex:none; color:#8291a7; font-size:13px; }.check-item-head b { font-size:17px; }.check-item-place { margin:14px 0; color:#718198; font-size:13px; }.check-item-count,.check-item-serial { border-top:1px solid #edf1f6; padding-top:12px; margin-top:12px; color:#52637a; font-size:14px; }.check-item-count :deep(.el-input-number) { width:130px; }.check-actions { display:grid; gap:10px; margin:16px 0 24px; }.check-secondary-actions { display:flex; flex-wrap:wrap; gap:8px; }.check-secondary-actions button { flex:1; min-height:44px; border:1px solid #dce8fa; border-radius:11px; background:#f3f7fe; color:#245eea; font-weight:600; }.check-secondary-actions .danger { color:#c64b4b; background:#fff8f8; border-color:#f5e3e3; }.check-actions .primary { margin:0; min-height:50px; }
 .inventory-places { margin-top: 14px; border-top: 1px solid #e5ebf3; }.inventory-places > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; color: #61728a; font-size: 13px; }.inventory-places strong { flex: none; color: #172840; }
 .pda > header .header-home { padding: 8px 0; background: transparent; color: #245eea; font-size: 16px; font-weight: 600; }
