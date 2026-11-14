@@ -442,18 +442,19 @@ const resetCheck = () => {
   details.value.forEach((item) => { item.checkQuantity = 0; if (item.actualSerialNos) item.actualSerialNos = [] })
   dirty.value = true
 }
-const saveCheck = async () => {
+const saveCheck = async (notify = true) => {
   if (details.value.some((item) => Number(item.checkQuantity) < (item.actualSerialNos?.length || 0))) {
     ElMessage.warning('实盘数量不能少于序列号数量')
-    return
+    return false
   }
   if (details.value.some((item) => item.checkQuantity === null || item.checkQuantity === '' || !Number.isFinite(Number(item.checkQuantity)) || Number(item.checkQuantity) < 0)) {
     ElMessage.warning('请输入有效的非负实盘数量')
-    return
+    return false
   }
   await CheckOrderApi.updateCheckOrder({ ...selected.value, details: details.value })
   dirty.value = false
-  ElMessage.success('盘点数量已保存')
+  if (notify) ElMessage.success('盘点数量已保存')
+  return true
 }
 const deleteCheck = async () => {
   await ElMessageBox.confirm(`确定删除盘点草稿 ${selected.value.no}？`, '删除草稿', { type: 'warning' })
@@ -467,9 +468,9 @@ const canSubmitApproval = () => {
   return true
 }
 const complete = async () => {
-  if (dirty.value) { ElMessage.warning('请先保存盘点数量'); return }
   await ElMessageBox.confirm('确认完成该单据并更新库存？', '操作确认', { type: 'warning' })
   if (tab.value === 'inventory') return
+  if (tab.value === 'check' && dirty.value && !(await saveCheck(false))) return
   await orderApis[tab.value].complete(selected.value.id)
   ElMessage.success('操作成功')
   selected.value = undefined
@@ -554,16 +555,16 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
     </template>
     <ReceiptDraftDetail v-else-if="tab === 'receipt' || tab === 'shipment' || tab === 'movement'" :kind="tab" :order="selected" :details="details" :approval-enabled="approvalEnabled" @back="backToList" @edit="editDraft" @updated="open(selected); load()" @changed="selected = undefined; load()" />
     <section v-else-if="tab === 'check'" class="content">
-      <ApprovalActions v-if="(approvalEnabled || selected.status === 1) && !dirty" :before-submit="canSubmitApproval" type="check" :id="selected.id" :status="selected.status" @changed="selected = undefined; load()" />
       <button class="back" @click="backToList">‹ 返回列表</button><div class="check-summary"><span>盘库单</span><strong>{{ selected.no }}</strong><span>{{ selected.warehouseName }}</span><div class="check-stats"><div>明细<b>{{ details.length }}</b></div><div>账面数量<b>{{ checkBookTotal }}</b></div><div>实盘数量<b>{{ checkActualTotal }}</b></div></div></div><h2 class="check-heading">盘点明细</h2>
       <template v-if="selected.status === 0">
         <details class="check-tools"><summary>位置筛选与扫码录入</summary><PlacePicker :model-value="selectedLocation?.id" :warehouse-id="selected.warehouseId" @update:model-value="filterCheckLocation" /><form class="search" @submit.prevent="scanCheck"><input v-model="scanCode" placeholder="扫描 SKU 或批次编号，数量加 1" /><ScanButton @scan="(value) => { scanCode = value; scanCheck() }" /><button>扫码录入</button></form><button class="back" @click="resetCheck">实盘数量清零</button></details>
       </template>
-      <article v-for="item in visibleDetails" :key="item.id"><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p><p>库区 / 库位：{{ placePath(storagePlaces, item.locationId) }}</p><p v-if="item.batchNo">批次：{{ item.batchNo }}</p><p>到货记录：{{ item.arrivalId === 0 ? '历史未分配' : item.arrivalId == null ? '未选择' : item.arrivalId }}</p><b>账面数量 {{ item.quantity }} {{ item.unit }}</b><p v-if="selected.status === 0">实盘序列号 <SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></p><p>实盘数量 <el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><span v-else>{{ item.checkQuantity }}</span></p></article>
-      <button v-if="selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="saveCheck">保存盘点数量</button>
-      <button v-if="selected.status === 0" v-hasPermi="['wms:check-order:update']" class="primary" @click="editDraft">修改草稿明细</button>
-      <button v-if="selected.status === 0" v-hasPermi="['wms:check-order:delete']" class="back" @click="deleteCheck">删除草稿</button>
-      <button v-if="selected.status === 0 && !approvalEnabled" v-hasPermi="['wms:check-order:complete']" class="primary" @click="complete">确认完成盘库</button>
+      <article v-for="item in visibleDetails" :key="item.id" class="check-item"><div class="check-item-head"><div><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p></div><span>账面 <b>{{ item.quantity }} {{ item.unit }}</b></span></div><div class="check-item-place">{{ placePath(storagePlaces, item.locationId) }}<template v-if="item.batchNo"> · 批次 {{ item.batchNo }}</template> · {{ item.arrivalId ? `到货 #${item.arrivalId}` : '历史未分配' }}</div><div class="check-item-count"><span>实盘数量</span><el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><strong v-else>{{ item.checkQuantity }} {{ item.unit }}</strong></div><div v-if="selected.status === 0" class="check-item-serial"><span>实盘序列号</span><SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></div></article>
+      <div class="check-actions">
+        <div v-if="selected.status === 0" class="check-secondary-actions"><button v-hasPermi="['wms:check-order:update']" @click="editDraft">修改明细</button><button v-hasPermi="['wms:check-order:delete']" class="danger" @click="deleteCheck">删除草稿</button><button v-if="dirty" v-hasPermi="['wms:check-order:update']" @click="saveCheck()">保存草稿</button></div>
+        <ApprovalActions v-if="(approvalEnabled || selected.status === 1) && !dirty" :before-submit="canSubmitApproval" type="check" :id="selected.id" :status="selected.status" @changed="selected = undefined; load()" />
+        <button v-if="selected.status === 0 && !approvalEnabled" v-hasPermi="['wms:check-order:complete']" class="primary" @click="complete">{{ dirty ? '保存并完成盘库' : '确认完成盘库' }}</button>
+      </div>
     </section>
     </template>
     <nav class="bottom-nav" aria-label="移动端导航"><button :class="{ chosen: home }" @click="goHome"><Icon icon="ep:house" :size="22" />工作台</button><button :class="{ chosen: !home && tab === 'inventory' }" @click="openWork('inventory')"><Icon icon="ep:box" :size="22" />库存</button><button :class="{ chosen: !home && tab !== 'inventory' }" @click="openWork('receipt')"><Icon icon="ep:document" :size="22" />单据</button></nav>
@@ -656,6 +657,7 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .receipt-info .location-search input { flex: 1; width: 0; max-width: none; border: 1px solid #dce5f1; background: #fff; }
 .receipt-info .location-search button:not(.scan-trigger) { padding: 10px; white-space: nowrap; }
 .check-summary { display: grid; gap: 6px; padding: 20px; border-radius: 18px; background: linear-gradient(130deg,#3478f7,#1b4bd2); color: #fff; }.check-summary > span { color: #dbe8ff; font-size: 13px; }.check-summary > strong { overflow-wrap: anywhere; font-size: 19px; }.check-stats { display: grid; grid-template-columns: repeat(3,1fr); margin-top: 16px; }.check-stats div { display: grid; gap: 6px; color: #dbe8ff; font-size: 13px; }.check-stats b { color: #fff; font-size: 21px; }.check-heading { margin: 24px 2px 12px; font-size: 17px; }.check-tools { margin: 12px 0; padding: 14px; border-radius: 14px; background: #fff; }.check-tools summary { color: #245eea; font-weight: 600; }.check-tools .search { padding: 12px 0; }
+.check-item-head,.check-item-count,.check-item-serial { display:flex; align-items:center; justify-content:space-between; gap:12px; }.check-item-head p { margin:5px 0 0; font-size:13px; }.check-item-head > span { flex:none; color:#8291a7; font-size:13px; }.check-item-head b { font-size:17px; }.check-item-place { margin:14px 0; color:#718198; font-size:13px; }.check-item-count,.check-item-serial { border-top:1px solid #edf1f6; padding-top:12px; margin-top:12px; color:#52637a; font-size:14px; }.check-item-count :deep(.el-input-number) { width:130px; }.check-actions { display:grid; gap:10px; margin:16px 0 24px; }.check-secondary-actions { display:flex; flex-wrap:wrap; gap:8px; }.check-secondary-actions button { flex:1; min-height:44px; border:1px solid #dce8fa; border-radius:11px; background:#f3f7fe; color:#245eea; font-weight:600; }.check-secondary-actions .danger { color:#c64b4b; background:#fff8f8; border-color:#f5e3e3; }.check-actions .primary { margin:0; min-height:50px; }
 .inventory-places { margin-top: 14px; border-top: 1px solid #e5ebf3; }.inventory-places > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; color: #61728a; font-size: 13px; }.inventory-places strong { flex: none; color: #172840; }
 .pda > header .header-home { padding: 8px 0; background: transparent; color: #245eea; font-size: 16px; font-weight: 600; }
 .method-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }

@@ -36,6 +36,7 @@ watch(() => [props.warehouseId, props.skuId, props.locationId, props.batchNo], (
 
 <template>
   <el-select :model-value="selected" :disabled="disabled || !warehouseId || !skuId" :loading="loading" clearable placeholder="选择到货记录" @visible-change="load" @update:model-value="emit('update:modelValue', $event === 'unassigned' ? 0 : $event ? Number($event) : undefined)">
+    <el-option v-if="selected && !options.some((item) => (item.arrivalId === null ? 'unassigned' : String(item.arrivalId)) === selected) && !(allowZeroUnassigned && loaded && selected === 'unassigned')" :value="selected" :label="selected === 'unassigned' ? '历史未分配' : `到货 #${selected}`" disabled />
     <el-option v-for="item in options" :key="item.arrivalId ?? 'unassigned'" :value="item.arrivalId === null ? 'unassigned' : String(item.arrivalId)" :label="label(item)" />
     <el-option v-if="allowZeroUnassigned && loaded && !options.some((item) => item.arrivalId === null)" value="unassigned" label="历史未分配（ID：0，账面库存 0）" />
   </el-select>
