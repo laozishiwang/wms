@@ -3,6 +3,8 @@ import request from '@/config/axios'
 import { ElDialog, ElMessage } from 'element-plus'
 import { formatDate } from '@/utils/formatTime'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import ReceiptOrderDetail from '../receipt/ReceiptOrderDetail.vue'
+import ShipmentOrderDetail from '../shipment/ShipmentOrderDetail.vue'
 const props = defineProps<{ direction: 'receipt' | 'shipment'; inline?: boolean }>()
 const visible = ref(false)
 const loading = ref(false)
@@ -37,9 +39,15 @@ const rangeGroups = [
   { label: '金额与数量', fields: [{key:'quantity',label:'数量'}, {key:'price',label:'单据单价'}, {key:'arrivalCostPrice',label:'到货成本价'}, {key:'salesPrice',label:'销售价'}, {key:'totalPrice',label:'金额'}] }
 ]
 const settingsVisible = ref(false)
+const receiptDetail = ref<InstanceType<typeof ReceiptOrderDetail>>()
+const shipmentDetail = ref<InstanceType<typeof ShipmentOrderDetail>>()
+const openOrder = (id: number) => {
+  if (props.direction === 'receipt') receiptDetail.value?.open(id)
+  else shipmentDetail.value?.open(id)
+}
 const draftColumns = ref<{key: string; label: string; show: boolean}[]>([])
 const openSettings = () => { draftColumns.value = columns.value.map((column) => ({ ...column })); settingsVisible.value = true }
-const defaults = [{key:'no',label:'单据号'}, {key:'status',label:'状态'}, {key:'type',label:'类型'}, {key:'orderTime',label:'单据日期'}, {key:'warehouseName',label:'仓库'}, {key:'merchantName',label:'供应商/客户'}, {key:'item',label:'物品/规格'}, {key:'location',label:'库位'}, {key:'batchNo',label:'批次号'}, {key:'pack',label:'托盘/箱/卷号'}, {key:'dates',label:'生产/到期日期'}, {key:'lengths',label:'净长/毛长(cm)'}, {key:'weights',label:'净重/毛重(kg)'}, {key:'dimensions',label:'长/宽/高(cm)'}, {key:'prices',label:'单价/到货成本/销售价/金额'}, {key:'quantity',label:'数量'}, {key:'serialNos',label:'序列号'}, {key:'bizOrderNo',label:'业务单号'}, {key:'remark',label:'备注'}]
+const defaults = [{key:'no',label:'单据号'}, {key:'status',label:'状态'}, {key:'type',label:'类型'}, {key:'orderTime',label:'单据日期'}, {key:'warehouseName',label:'仓库'}, {key:'merchantName',label:'供应商/客户'}, {key:'item',label:'物品/规格'}, {key:'location',label:'库位'}, {key:'batchNo',label:'批次号'}, {key:'arrivalId',label:'到货记录'}, {key:'pack',label:'托盘/箱/卷号'}, {key:'dates',label:'生产/到期日期'}, {key:'lengths',label:'净长/毛长(cm)'}, {key:'weights',label:'净重/毛重(kg)'}, {key:'dimensions',label:'长/宽/高(cm)'}, {key:'prices',label:'单价/到货成本/销售价/金额'}, {key:'quantity',label:'数量'}, {key:'serialNos',label:'序列号'}, {key:'bizOrderNo',label:'业务单号'}, {key:'remark',label:'备注'}]
 const storageKey = `wms:detail-columns:${props.direction}`
 const columns = ref(defaults.map((c) => ({...c, show:true})))
 try { const saved = JSON.parse(localStorage.getItem(storageKey) || '[]'); if (Array.isArray(saved) && saved.length) columns.value = [...saved.filter((v) => defaults.some((c) => c.key === v.key)).map((v) => ({...defaults.find((c) => c.key === v.key)!, show: v.show})), ...defaults.filter((c) => !saved.some((v) => v.key === c.key)).map((c) => ({...c,show:true}))] } catch { /* Invalid browser settings use defaults. */ }
@@ -118,11 +126,13 @@ defineExpose({ open })
     <el-table v-loading="loading" :data="rows" border>
       <el-table-column v-for="column in columns.filter((c) => c.show)" :key="column.key" :label="column.label" :prop="column.key" min-width="150" :fixed="column.key === 'no' ? 'left' : false">
         <template #default="{ row }">
-          <dict-tag v-if="column.key === 'status'" :type="DICT_TYPE.WMS_ORDER_STATUS" :value="row.status" />
+          <el-button v-if="column.key === 'no'" link type="primary" @click="openOrder(row.orderId)">{{ row.no }}</el-button>
+          <dict-tag v-else-if="column.key === 'status'" :type="DICT_TYPE.WMS_ORDER_STATUS" :value="row.status" />
           <dict-tag v-else-if="column.key === 'type'" :type="direction === 'receipt' ? DICT_TYPE.WMS_RECEIPT_ORDER_TYPE : DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE" :value="row.type" />
           <template v-else-if="column.key === 'orderTime'">{{ dateText(row.orderTime) }}</template>
           <template v-else-if="column.key === 'item'">{{ textValue(row.itemName) }} / {{ textValue(row.itemCode) }}<br />{{ textValue(row.skuName) }} / {{ textValue(row.skuCode) }}<br />单位：{{ textValue(row.itemUnit) }}</template>
           <template v-else-if="column.key === 'location'">{{ textValue(row.locationName) }}<br />{{ textValue(row.locationCode) }}</template>
+          <template v-else-if="column.key === 'arrivalId'">{{ row.arrivalId == null || row.arrivalId === 0 ? '历史未分配' : `到货 #${row.arrivalId}` }}</template>
           <template v-else-if="column.key === 'pack'">托盘：{{ textValue(row.palletNo) }}<br />箱：{{ textValue(row.boxNo) }}<br />卷：{{ textValue(row.rollNo) }}</template>
           <template v-else-if="column.key === 'dates'">生产：{{ dateText(row.productionDate) }}<br />到期：{{ dateText(row.expirationDate) }}</template>
           <template v-else-if="column.key === 'lengths'">净：{{ textValue(row.netLength) }}<br />毛：{{ textValue(row.grossLength) }}</template>
@@ -138,6 +148,8 @@ defineExpose({ open })
       <div v-for="(column, index) in draftColumns" :key="column.key" class="column-setting"><el-checkbox v-model="column.show">{{ column.label }}</el-checkbox><span><el-button size="small" :disabled="index === 0" @click="moveColumn(index, -1)">上移</el-button><el-button size="small" :disabled="index === draftColumns.length - 1" @click="moveColumn(index, 1)">下移</el-button></span></div>
       <template #footer><el-button @click="draftColumns = defaults.map((c) => ({...c, show:true}))">恢复默认</el-button><el-button type="primary" @click="saveColumns">保存</el-button></template>
     </el-dialog>
+    <ReceiptOrderDetail v-if="direction === 'receipt'" ref="receiptDetail" />
+    <ShipmentOrderDetail v-else ref="shipmentDetail" />
   </component>
 </template>
 <style scoped>
