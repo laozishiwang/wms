@@ -7,6 +7,7 @@ import PlacePicker from './PlacePicker.vue'
 import { placePath, type StoragePlace } from './place'
 import { buildDraftDetails } from './draft-details'
 import { applyCountScan } from './count-scan'
+import { matchesScanAttributes } from './scan-attributes'
 import MerchantSelect from '@/views/wms/md/merchant/components/MerchantSelect.vue'
 import ScanButton from './ScanButton.vue'
 import CheckCreate from './CheckCreate.vue'
@@ -328,13 +329,29 @@ const scanReceiptSku = async (code: string) => {
   let unique: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
   if (scanSelectedSku.value && unique.length === 1 && unique[0].id !== scanSelectedSku.value.id) return '扫描的物品与指定扫码物品不一致'
   let parsed: Record<string, string> | null = null
-  if (unique.length === 0 && tab.value === 'receipt') {
+  if (unique.length === 0 && (tab.value === 'receipt' || tab.value === 'shipment')) {
     parsed = await request.get({ url: '/wms/scan-rule/resolve', params: { value: code, skuId: scanSelectedSku.value?.id } })
     if (parsed) {
       unique = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
       if (unique.length !== 1 || !unique[0].id) return '二维码中的规格编号未找到或不唯一，请检查规则和物品资料'
       const quantity = parsed.quantity ? Number(parsed.quantity) : 1
       if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) return '二维码中的数量最多支持两位小数'
+      if (tab.value === 'shipment') {
+        if (!warehouseId.value) return '请先选择仓库'
+        const balances = await listArrivalBalances(warehouseId.value, unique[0].id)
+        const candidates = balances.filter(item => (item.locationId ?? undefined) === selectedLocation.value?.id && Number(item.quantity) > 0 && matchesScanAttributes({ ...item }, parsed!))
+        if (candidates.length !== 1) return candidates.length ? '匹配到多条到货库存，请手动选择' : '当前库位没有匹配的到货库存'
+        const stock = candidates[0]
+        const arrivalId = stock.arrivalId ?? 0
+        const existing = receiptRows.value.filter(item => item.sku.id === unique[0].id && item.locationId === selectedLocation.value?.id && (item.batchNo || '') === (stock.batchNo || '') && item.arrivalId === arrivalId)
+        if (existing.some(item => item.serialNos?.length)) return '该明细包含序列号，请手动选择序列号'
+        const total = existing.reduce((sum, item) => sum + Number(item.quantity), 0) + quantity
+        if (Number(total.toFixed(2)) > Number(stock.quantity)) return '数量超过所选到货记录的可用库存'
+        if (existing.length === 1) existing[0].quantity = Number((existing[0].quantity + quantity).toFixed(2))
+        else if (existing.length > 1) return '该到货记录有多条明细，请手动调整数量'
+        else receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, batchNo: stock.batchNo || undefined, arrivalId, available: Number(stock.quantity) })
+        return
+      }
       const numericFields = ['netLength', 'grossLength', 'netWeight', 'grossWeight', 'length', 'width', 'height', 'price', 'salesPrice'] as const
       const values: Partial<(typeof receiptRows.value)[number]> = {}
       for (const field of numericFields) {
@@ -478,6 +495,21 @@ const scanCheck = async (code: string, locationId?: number) => {
     const skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
     if (skus.length > 1) return '扫码结果不唯一，请使用规格编号'
     if (skus.length === 1) matches = scopedDetails().filter((item) => item.skuId === skus[0].id)
+    else {
+      const parsed: Record<string, string> | null = await request.get({ url: '/wms/scan-rule/resolve', params: { value: code } })
+      if (parsed) {
+        const parsedSkus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: parsed.skuCode } })
+        if (parsedSkus.length !== 1) return '二维码中的规格编号未找到或不唯一'
+        matches = scopedDetails().filter(item => item.skuId === parsedSkus[0].id && matchesScanAttributes(item, parsed))
+        if (matches.length !== 1) return matches.length ? '匹配到多条明细，请先选择库位或手动盘点' : '单据中没有匹配的明细，请手动盘点'
+        const quantity = parsed.quantity ? Number(parsed.quantity) : 1
+        if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(Number((quantity * 100).toFixed(6)))) return '二维码中的数量最多支持两位小数'
+        if (applyCountScan(matches[0]) === 'serial-required') return '该明细含序列号，请扫描序列号或手动填写'
+        matches[0].checkQuantity = Number((Number(matches[0].checkQuantity) + quantity - 1).toFixed(2))
+        dirty.value = true
+        return
+      }
+    }
   }
   if (matches.length !== 1) {
     return matches.length ? '该编号对应多条明细，请手动录入' : `单据中未找到：${code}`
@@ -491,7 +523,7 @@ const queueCheckScan = (raw: string) => {
   const locationId = selectedLocation.value?.id
   scanCode.value = ''
   pendingCheckScans.value++
-  const result = checkScanQueue.then(async () => { const error = await scanCheck(code, locationId); return error ? { ok: false, message: error } : { ok: true, message: `盘点成功：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingCheckScans.value-- })
+  const result = checkScanQueue.then(async () => { const error = await scanCheck(code, locationId); return error ? { ok: false, message: error } : { ok: true, message: `盘点成功：${code}` } }).catch((error) => ({ ok: false, message: typeof error === 'string' && error !== 'error' ? error : error instanceof Error ? error.message : `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingCheckScans.value-- })
   checkScanQueue = result.then(() => {})
   return result
 }
