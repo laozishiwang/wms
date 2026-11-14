@@ -308,21 +308,21 @@ const selectWarehouse = async () => {
 }
 const clearWarehouse = async () => { if (creatingReceipt.value && !(await confirmDiscard())) return; warehouseId.value = undefined; warehouseName.value = ''; receiptRows.value = []; selectedLocation.value = undefined; search() }
 const scanReceiptSku = async (code: string) => {
-  if (!code) return
+  if (!code) return '扫码内容为空'
   const unique: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
-  if (unique.length !== 1 || !unique[0].id) { ElMessage.warning(unique.length ? '扫码结果不唯一，请使用规格编号' : '未找到商品规格'); return }
+  if (unique.length !== 1 || !unique[0].id) return unique.length ? '扫码结果不唯一，请使用规格编号' : `未找到物品：${code}`
   if (tab.value === 'shipment') {
-    if (!warehouseId.value) { ElMessage.warning('请先选择仓库'); return }
+    if (!warehouseId.value) return '请先选择仓库'
     const balances = await listArrivalBalances(warehouseId.value, unique[0].id)
-    if (!balances.some((item) => (item.locationId ?? undefined) === selectedLocation.value?.id && Number(item.quantity) > 0)) { ElMessage.warning('该库位没有此物品的可用库存'); return }
+    if (!balances.some((item) => (item.locationId ?? undefined) === selectedLocation.value?.id && Number(item.quantity) > 0)) return '该库位没有此物品的可用库存'
   }
   const matchingRows = receiptRows.value.filter((item) => item.sku.id === unique[0].id && item.locationId === selectedLocation.value?.id && !item.batchNo)
-  if (matchingRows.length > 1) { ElMessage.warning('该规格有多条明细，请手动调整对应数量'); return }
+  if (matchingRows.length > 1) return '该规格有多条明细，请手动调整对应数量'
   const row = matchingRows[0]
-  if (row?.serialNos?.length) { ElMessage.warning('该明细已录入序列号，请继续扫描序列号'); return }
-  if (row?.arrivalId !== undefined && row.available === undefined) { ElMessage.warning('正在获取到货库存，请稍后重试'); return }
+  if (row?.serialNos?.length) return '该明细已录入序列号，请继续扫描序列号'
+  if (row?.arrivalId !== undefined && row.available === undefined) return '正在获取到货库存，请稍后重试'
   const limit = row?.arrivalId !== undefined ? row.available : undefined
-  if (limit !== undefined && (row?.quantity || 0) + 1 > limit) { ElMessage.warning('数量超过所选到货记录的可用库存'); return }
+  if (limit !== undefined && (row?.quantity || 0) + 1 > limit) return '数量超过所选到货记录的可用库存'
   if (row) row.quantity += 1
   else receiptRows.value.push({ rowId: ++nextReceiptRowId, sku: unique[0], quantity: 1, locationId: selectedLocation.value?.id, locationName: selectedLocation.value?.name, netLength: unique[0].netLength, grossLength: unique[0].grossLength, netWeight: unique[0].netWeight, grossWeight: unique[0].grossWeight, length: unique[0].length, width: unique[0].width, height: unique[0].height, price: tab.value === 'receipt' ? unique[0].costPrice : undefined, salesPrice: unique[0].sellingPrice })
 }
@@ -330,14 +330,17 @@ const pendingScans = ref(0)
 let scanQueue = Promise.resolve()
 const queueReceiptScan = (value: string) => {
   const code = value.trim()
-  if (!code) return
+  if (!code) return Promise.resolve({ ok: false, message: '扫码内容为空' })
   receiptScan.value = ''
   pendingScans.value++
-  scanQueue = scanQueue.then(() => scanReceiptSku(code)).catch(() => ElMessage.error(`处理 ${code} 失败，请重新扫描`)).finally(() => { pendingScans.value-- })
+  const result = scanQueue.then(async () => { const error = await scanReceiptSku(code); return error ? { ok: false, message: error } : { ok: true, message: `已添加：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingScans.value-- })
+  scanQueue = result.then(() => {})
+  return result
 }
+const manualReceiptScan = async (value: string) => { const result = await queueReceiptScan(value); if (!result.ok) ElMessage.warning(result.message) }
 const selectSku = async (sku: ItemSkuVO) => {
   if (!sku.code) { ElMessage.warning('规格编号为空，无法添加'); return }
-  queueReceiptScan(sku.code)
+  manualReceiptScan(sku.code)
   skuPickerOpen.value = false
 }
 const selectRowArrival = async (row: (typeof receiptRows.value)[number], arrivalId: number | undefined) => {
@@ -422,36 +425,38 @@ const open = async (row: any) => {
   }
 }
 const scanCheck = async (code: string, locationId?: number) => {
-  if (!checkScanReady.value) return
+  if (!checkScanReady.value) return '请先清零并开始盘点'
   const scopedDetails = () => locationId === undefined ? details.value : details.value.filter((item) => item.locationId === locationId)
   const serialMatches = scopedDetails().filter((item) => item.bookSerialNos?.includes(code) || item.actualSerialNos?.includes(code))
-  if (serialMatches.length > 1) { ElMessage.warning('该序列号对应多条明细，请先选择库位'); return }
+  if (serialMatches.length > 1) return '该序列号对应多条明细，请先选择库位'
   if (serialMatches.length === 1) {
-    if (applyCountScan(serialMatches[0], code) === 'duplicate') { ElMessage.warning('该序列号已盘点'); return }
+    if (applyCountScan(serialMatches[0], code) === 'duplicate') return '该序列号已盘点'
     dirty.value = true
     return
   }
   let matches = scopedDetails().filter((item) => item.skuCode === code || item.batchNo === code)
   if (!matches.length) {
     const skus: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
-    if (skus.length > 1) { ElMessage.warning('扫码结果不唯一，请使用规格编号'); return }
+    if (skus.length > 1) return '扫码结果不唯一，请使用规格编号'
     if (skus.length === 1) matches = scopedDetails().filter((item) => item.skuId === skus[0].id)
   }
   if (matches.length !== 1) {
-    ElMessage.warning(matches.length ? '该编号对应多条明细，请手动录入' : '单据中未找到此商品或批次编号')
-    return
+    return matches.length ? '该编号对应多条明细，请手动录入' : `单据中未找到：${code}`
   }
-  if (applyCountScan(matches[0]) === 'serial-required') { ElMessage.warning('该明细含序列号，请扫描序列号或手动填写'); return }
+  if (applyCountScan(matches[0]) === 'serial-required') return '该明细含序列号，请扫描序列号或手动填写'
   dirty.value = true
 }
 const queueCheckScan = (raw: string) => {
   const code = raw.trim()
-  if (!checkScanReady.value || !code) return
+  if (!checkScanReady.value || !code) return Promise.resolve({ ok: false, message: '请先清零并输入扫码内容' })
   const locationId = selectedLocation.value?.id
   scanCode.value = ''
   pendingCheckScans.value++
-  checkScanQueue = checkScanQueue.then(() => scanCheck(code, locationId)).catch(() => ElMessage.error(`处理 ${code} 失败，请重新扫描`)).finally(() => { pendingCheckScans.value-- })
+  const result = checkScanQueue.then(async () => { const error = await scanCheck(code, locationId); return error ? { ok: false, message: error } : { ok: true, message: `盘点成功：${code}` } }).catch(() => ({ ok: false, message: `处理 ${code} 失败，请重新扫描` })).finally(() => { pendingCheckScans.value-- })
+  checkScanQueue = result.then(() => {})
+  return result
 }
+const manualCheckScan = async (value: string) => { const result = await queueCheckScan(value); if (!result.ok) ElMessage.warning(result.message) }
 const setCheckSerials = (item: any, serials: string[]) => {
   const ordinary = Number(item.checkQuantity || 0) - (item.actualSerialNos?.length || 0)
   item.actualSerialNos = serials
@@ -535,8 +540,8 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <label class="info-row"><span>单据日期</span><input v-model="receiptDate" type="date" /></label>
       <label class="info-row"><span>备注</span><input v-model="receiptRemark" maxlength="255" placeholder="选填" /></label></div>
       <div class="receipt-tools"><h3>物品明细</h3>
-      <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous @scan="queueReceiptScan" /></div>
-      <form class="search manual-scan" @submit.prevent="queueReceiptScan(receiptScan)"><input v-model="receiptScan" placeholder="扫码枪输入或手动输入物品条码" /><button>添加</button></form><p v-if="pendingScans">正在处理 {{ pendingScans }} 条扫码</p></div>
+      <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous :process-scan="queueReceiptScan" /></div>
+      <form class="search manual-scan" @submit.prevent="manualReceiptScan(receiptScan)"><input v-model="receiptScan" placeholder="扫码枪输入或手动输入物品条码" /><button>添加</button></form><p v-if="pendingScans">正在处理 {{ pendingScans }} 条扫码</p></div>
       <el-dialog v-model="skuPickerOpen" title="选择物品" width="min(520px, 95vw)" append-to-body>
         <form class="search" @submit.prevent="skuPage = 1; loadSkus()"><input v-model="skuKeyword" placeholder="输入物品名称" /><button>查询</button></form>
         <div v-loading="skuLoading" class="sku-picker">
@@ -588,7 +593,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <button class="back" @click="backToList">‹ 返回列表</button><div class="check-summary"><span>盘库单</span><strong>{{ selected.no }}</strong><span>{{ selected.warehouseName }}</span><div class="check-stats"><div>明细<b>{{ details.length }}</b></div><div>账面数量<b>{{ checkBookTotal }}</b></div><div>实盘数量<b>{{ checkActualTotal }}</b></div></div></div><h2 class="check-heading">盘点明细</h2>
       <template v-if="selected.status === 0">
         <details class="check-tools"><summary>位置筛选<span v-if="selectedLocation"> · {{ selectedLocation.name }}</span></summary><PlacePicker :model-value="selectedLocation?.id" :warehouse-id="selected.warehouseId" @update:model-value="filterCheckLocation" /></details>
-        <details class="check-tools"><summary>扫码盘点</summary><div class="check-scan-start"><span>{{ checkScanReady ? '已从零开始，可连续扫码' : '先清零，再开始扫码盘点' }}</span><button type="button" class="check-scan-reset" @click="resetCheck">{{ checkScanReady ? '重新清零' : '清零并开始' }}</button></div><form v-if="checkScanReady" class="search" @submit.prevent="queueCheckScan(scanCode)"><input v-model="scanCode" placeholder="扫描物品码、批次或序列号" /><ScanButton continuous @scan="queueCheckScan" /><button>录入</button></form><p v-if="pendingCheckScans">正在处理 {{ pendingCheckScans }} 条扫码</p></details>
+        <details class="check-tools"><summary>扫码盘点</summary><div class="check-scan-start"><span>{{ checkScanReady ? '已从零开始，可连续扫码' : '先清零，再开始扫码盘点' }}</span><button type="button" class="check-scan-reset" @click="resetCheck">{{ checkScanReady ? '重新清零' : '清零并开始' }}</button></div><form v-if="checkScanReady" class="search" @submit.prevent="manualCheckScan(scanCode)"><input v-model="scanCode" placeholder="扫描物品码、批次或序列号" /><ScanButton continuous :process-scan="queueCheckScan" /><button>录入</button></form><p v-if="pendingCheckScans">正在处理 {{ pendingCheckScans }} 条扫码</p></details>
       </template>
       <article v-for="item in visibleDetails" :key="item.id" class="check-item"><div class="check-item-head"><div><strong>{{ item.itemName }} {{ item.skuName }}</strong><p>{{ item.skuCode }}</p></div><span>账面 <b>{{ item.quantity }} {{ item.unit }}</b></span></div><div class="check-item-place">{{ placePath(storagePlaces, item.locationId) }}<template v-if="item.batchNo"> · 批次 {{ item.batchNo }}</template> · {{ item.arrivalId ? `到货 #${item.arrivalId}` : '历史未分配' }}</div><div class="check-item-count"><span>实盘数量</span><el-input-number v-if="selected.status === 0" v-model="item.checkQuantity" :min="0" :precision="QUANTITY_PRECISION" :controls="false" @change="dirty = true" /><strong v-else>{{ item.checkQuantity }} {{ item.unit }}</strong></div><div v-if="selected.status === 0" class="check-item-serial"><span>实盘序列号</span><SerialEditor :model-value="item.actualSerialNos" @update:model-value="setCheckSerials(item, $event)" /></div></article>
       <div class="check-actions">
