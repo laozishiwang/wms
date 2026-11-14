@@ -55,6 +55,7 @@ onMounted(() => {
   const roots = [document.documentElement, document.body, document.getElementById('app')!]
   const previousStyles = roots.map((root) => ({ overflow: root.style.overflow, height: root.style.height }))
   roots.forEach((root) => { root.style.overflow = 'visible'; root.style.height = 'auto' })
+  document.documentElement.classList.add('pda-scroll-page')
   document.documentElement.style.overflowY = 'auto'
   const resize = new ResizeObserver(updateScrollIndicator)
   const mutations = new MutationObserver(updateScrollIndicator)
@@ -68,6 +69,7 @@ onMounted(() => {
     mutations.disconnect()
     window.removeEventListener('resize', updateScrollIndicator)
     window.removeEventListener('scroll', updateScrollIndicator)
+    document.documentElement.classList.remove('pda-scroll-page')
     roots.forEach((root, index) => { root.style.overflow = previousStyles[index].overflow; root.style.height = previousStyles[index].height })
   })
 })
@@ -104,8 +106,9 @@ const page = ref(1)
 const total = ref(0)
 const scanCode = ref('')
 const warehouseCode = ref('')
-const warehouseId = ref<number>()
-const warehouseName = ref('')
+const tabWarehouses = reactive<Partial<Record<Tab, { id?: number; name: string }>>>({})
+const warehouseId = computed({ get: () => tabWarehouses[tab.value]?.id, set: (id) => { tabWarehouses[tab.value] = { id, name: tabWarehouses[tab.value]?.name || '' } } })
+const warehouseName = computed({ get: () => tabWarehouses[tab.value]?.name || '', set: (name) => { tabWarehouses[tab.value] = { id: tabWarehouses[tab.value]?.id, name } } })
 const warehouseChoices = ref<WarehouseVO[]>([])
 const showWarehouseChoices = ref(false)
 const creatingReceipt = ref(false)
@@ -141,6 +144,8 @@ const loadSkus = async () => {
 const openSkuPicker = async () => { skuPickerOpen.value = true; skuPage.value = 1; skuKeyword.value = ''; await loadSkus() }
 let nextReceiptRowId = 0
 const receiptRows = ref<Array<{ rowId: number; arrivalId?: number; sku: ItemSkuVO; quantity: number; locationId?: number; locationName?: string; batchNo?: string; productionDate?: number; expirationDate?: number; available?: number; serialNos?: string[]; palletNo?: string; boxNo?: string; rollNo?: string; netLength?: number; grossLength?: number; netWeight?: number; grossWeight?: number; length?: number; width?: number; height?: number; price?: number; salesPrice?: number }>>([])
+const dateValue = (value?: number) => { if (!value) return ''; const d = new Date(value); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const dateMillis = (event: Event) => { const value = (event.target as HTMLInputElement).value; return value ? new Date(`${value}T00:00:00`).getTime() : undefined }
 const arrivalFields: Array<{ key: 'palletNo' | 'boxNo' | 'rollNo' | 'netLength' | 'grossLength' | 'netWeight' | 'grossWeight' | 'length' | 'width' | 'height' | 'price' | 'salesPrice'; label: string; text?: boolean }> = [
   { key: 'palletNo', label: '托盘号', text: true }, { key: 'boxNo', label: '箱号', text: true }, { key: 'rollNo', label: '卷号', text: true },
   { key: 'netLength', label: '净长(cm)' }, { key: 'grossLength', label: '毛长(cm)' }, { key: 'netWeight', label: '净重(kg)' }, { key: 'grossWeight', label: '毛重(kg)' },
@@ -155,6 +160,7 @@ const selectedLocation = ref<{ id: number; name: string }>()
 type StoragePlace = { id: number; parentId?: number; type: string; name: string; code: string }
 const storagePlaces = ref<StoragePlace[]>([])
 const selectedAreaId = ref<number>()
+const placeCodes = reactive({ SHELF: '', LOCATION: '' })
 const storageLocations = computed(() => storagePlaces.value.filter((place) => place.type === 'LOCATION' && (!selectedAreaId.value || place.parentId === selectedAreaId.value)))
 watch(creatingReceipt, async (creating) => {
   if (!creating || !warehouseId.value) return
@@ -165,6 +171,15 @@ const changeArea = () => { selectedLocation.value = undefined }
 const chooseLocation = (id?: number) => {
   const place = storagePlaces.value.find((item) => item.id === id && item.type === 'LOCATION')
   selectedLocation.value = place ? { id: place.id, name: `${place.name} (${place.code})` } : undefined
+}
+const choosePlaceByCode = (type: 'SHELF' | 'LOCATION', value: string) => {
+  const input = value.trim()
+  const match = /^WMS:(SHELF|LOCATION):(\d+)$/i.exec(input)
+  const place = storagePlaces.value.find((item) => item.type === type && (match ? match[1].toUpperCase() === type && String(item.id) === match[2] : item.code === input))
+  if (!place) { ElMessage.warning(`未找到当前仓库的${type === 'SHELF' ? '库区' : '库位'}`); return }
+  if (type === 'SHELF') { selectedAreaId.value = place.id; changeArea() }
+  else { selectedAreaId.value = place.parentId; chooseLocation(place.id) }
+  placeCodes[type] = ''
 }
 const visibleDetails = computed(() => (tab.value === 'check' || tab.value === 'receipt' || tab.value === 'shipment' || tab.value === 'movement') && selectedLocation.value
   ? details.value.filter((item) => (tab.value === 'movement' ? item.sourceLocationId : item.locationId) === selectedLocation.value?.id)
@@ -201,7 +216,7 @@ const confirmDiscard = async () => {
 }
 const changeTab = async (value: Tab) => {
   if (value === tab.value || !(await confirmDiscard())) return
-  creatingCheck.value = false; creatingMovement.value = false; tab.value = value; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); load()
+  creatingCheck.value = false; creatingMovement.value = false; tab.value = value; warehouseCode.value = ''; showWarehouseChoices.value = false; keyword.value = ''; page.value = 1; selected.value = undefined; creatingReceipt.value = false; receiptRows.value = []; selectedLocation.value = undefined; clearBatchInput(); load()
 }
 const openWork = async (value: Tab) => {
   if (!home.value) { await changeTab(value); return }
@@ -253,7 +268,7 @@ const scanReceiptSku = async (code: string) => {
   if (!code) return
   const unique: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code } })
   if (unique.length !== 1 || !unique[0].id) { ElMessage.warning(unique.length ? '扫码结果不唯一，请使用规格编号' : '未找到商品规格'); return }
-  const batchNo = batchInput.value.trim() || undefined
+  const batchNo = tab.value === 'shipment' ? batchInput.value.trim() || undefined : undefined
   if (!batchNo && (productionDate.value || expirationDate.value)) { ElMessage.warning('填写日期时必须填写批次号'); return }
   if (productionDate.value && expirationDate.value && expirationDate.value < productionDate.value) { ElMessage.warning('到期日期不能早于生产日期'); return }
   const produced = productionDate.value ? new Date(productionDate.value + 'T00:00:00').getTime() : undefined
@@ -316,6 +331,7 @@ const scanLocation = async () => {
 const saveReceipt = async () => {
   if (pendingScans.value) { ElMessage.warning('物品扫码处理中，请稍候'); return }
   if (!receiptDate.value || receiptType.value == null || !warehouseId.value || !receiptRows.value.length || receiptRows.value.some((row) => !row.quantity || row.quantity <= 0 || (row.available !== undefined && row.quantity > row.available))) { ElMessage.warning('请选择单据类型、仓库并填写有效商品数量'); return }
+  if (tab.value === 'receipt' && receiptRows.value.some((row) => (!row.batchNo?.trim() && (row.productionDate || row.expirationDate)) || (row.productionDate && row.expirationDate && row.expirationDate < row.productionDate))) { ElMessage.warning('填写生产或到期日期时请填写批次号，且到期日期不能早于生产日期'); return }
   const numericFields = ['netLength', 'grossLength', 'netWeight', 'grossWeight', 'length', 'width', 'height', 'price', 'salesPrice'] as const
   if (tab.value === 'receipt' && receiptRows.value.some((row) => numericFields.some((key) => row[key] != null && String(row[key]) !== '' && (!Number.isFinite(Number(row[key])) || Number(row[key]) < 0)))) { ElMessage.warning('尺寸、重量和价格不能小于零'); return }
   if (tab.value === 'shipment' && receiptRows.value.some((row) => row.arrivalId === undefined)) { ElMessage.warning('请选择每行的到货记录或历史未分配'); return }
@@ -469,7 +485,7 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
 
 <template>
   <main ref="scrollArea" class="pda">
-    <header><div><h1>{{ home ? '工作台' : labels[tab] }}</h1></div><button @click="logout">退出登录</button></header>
+    <header><h1 v-if="home">工作台</h1><button v-else class="header-home" @click="goHome">‹ 工作台</button><button @click="logout">退出登录</button></header>
     <section v-if="home" class="dashboard">
       <div v-if="canViewSummary" class="welcome"><div class="welcome-heading"><div><p>单据总览</p></div><Icon icon="ep:data-analysis" :size="25" /></div><div class="overview"><div v-for="item in [{type:1,label:'入库'},{type:2,label:'出库'},{type:3,label:'移库'},{type:4,label:'盘库'}]" :key="item.type"><span>{{ item.label }}</span><strong>{{ summaryCount(item.type) }}</strong></div></div></div>
       <h2>仓库作业</h2>
@@ -477,23 +493,23 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
       <template v-if="canViewSummary"><h2>单据进度</h2><div class="progress-grid"><div v-for="state in [{status:1,label:'待审批',icon:'ep:document-checked'}, {status:0,label:'草稿',icon:'ep:edit-pen'}]" :key="state.status" class="progress-card"><div class="progress-heading"><Icon :icon="state.icon" :size="19" /><strong>{{ state.label }}</strong></div><div class="progress-counts"><button v-for="item in [{type:1,label:'入库',tab:'receipt'},{type:2,label:'出库',tab:'shipment'},{type:3,label:'移库',tab:'movement'},{type:4,label:'盘库',tab:'check'}]" :key="item.type" type="button" @click="openDashboardWork(item.tab as Tab, state.status)"><span>{{ item.label }}</span><b>{{ summaryStatus(item.type, state.status) }}</b></button></div></div></div></template>
     </section>
     <template v-else>
-    <button class="home-link" @click="goHome">‹ 工作台</button>
     <nav><button v-for="(label, key) in labels" :key="key" :class="{ active: tab === key }" @click="changeTab(key as Tab)">{{ label }}</button></nav>
     <section v-if="creatingReceipt" class="content receipt-create">
       <button class="back" @click="cancelReceipt">‹ 返回列表</button>
       <h2>{{ tab === 'shipment' ? '出库' : '入库' }}开单</h2>
       <div class="receipt-info"><h3>仓库与位置</h3><div class="info-row"><span>仓库</span><strong>{{ warehouseName }}</strong></div>
-      <label class="info-row"><span>库区</span><el-select v-model="selectedAreaId" :disabled="pendingScans > 0" clearable placeholder="可不选择" @change="changeArea"><el-option v-for="place in storagePlaces.filter((item) => item.type === 'SHELF')" :key="place.id" :label="`${place.name} (${place.code})`" :value="place.id" /></el-select></label>
-      <label class="info-row"><span>库位</span><el-select :model-value="selectedLocation?.id" :disabled="pendingScans > 0" clearable filterable placeholder="可不选择" @update:model-value="chooseLocation"><el-option v-for="place in storageLocations" :key="place.id" :label="`${place.name} (${place.code})`" :value="place.id" /></el-select></label>
-      <form class="search location-search" @submit.prevent="scanLocation"><input v-model="locationScan" :disabled="pendingScans > 0" placeholder="扫描库位二维码" /><ScanButton :disabled="pendingScans > 0" @scan="(value) => { locationScan = value; scanLocation() }" /><button :disabled="pendingScans > 0">选择库位</button></form></div>
+      <div v-for="kind in (['SHELF', 'LOCATION'] as const)" :key="kind" class="place-group"><h4>{{ kind === 'SHELF' ? '库区' : '库位' }}（可选）</h4>
+        <div class="method-row"><span>方式一</span><ScanButton :disabled="pendingScans > 0" :label="`扫码选择${kind === 'SHELF' ? '库区' : '库位'}`" @scan="(value) => choosePlaceByCode(kind, value)" /></div>
+        <div class="method-row"><span>方式二</span><form class="search place-input" @submit.prevent="choosePlaceByCode(kind, placeCodes[kind])"><input v-model="placeCodes[kind]" :disabled="pendingScans > 0" :placeholder="`输入${kind === 'SHELF' ? '库区' : '库位'}编号`" /><button :disabled="pendingScans > 0">选择</button></form></div>
+        <div class="method-row"><span>方式三</span><el-select v-if="kind === 'SHELF'" v-model="selectedAreaId" :disabled="pendingScans > 0" clearable filterable placeholder="从列表选择库区" @change="changeArea"><el-option v-for="place in storagePlaces.filter((item) => item.type === 'SHELF')" :key="place.id" :label="`${place.name} (${place.code})`" :value="place.id" /></el-select><el-select v-else :model-value="selectedLocation?.id" :disabled="pendingScans > 0" clearable filterable placeholder="从列表选择库位" @update:model-value="chooseLocation"><el-option v-for="place in storageLocations" :key="place.id" :label="`${place.name} (${place.code})`" :value="place.id" /></el-select></div>
+      </div></div>
       <div class="receipt-info"><h3>基本信息</h3>
       <label class="info-row"><span>单据类型</span><select v-model.number="receiptType"><option v-for="option in getIntDictOptions(tab === 'shipment' ? DICT_TYPE.WMS_SHIPMENT_ORDER_TYPE : DICT_TYPE.WMS_RECEIPT_ORDER_TYPE)" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
       <label class="info-row"><span>往来单位</span><MerchantSelect v-model="receiptMerchantId" :supplier="tab === 'receipt'" :customer="tab === 'shipment'" /></label>
       <label class="info-row"><span>单据日期</span><input v-model="receiptDate" type="date" /></label>
       <label class="info-row"><span>备注</span><input v-model="receiptRemark" maxlength="255" placeholder="选填" /></label></div>
       <div class="receipt-tools"><h3>物品明细</h3>
-      <label class="info-row"><span>批次号</span><input v-model="batchInput" :disabled="pendingScans > 0" placeholder="选填" /></label>
-      <template v-if="tab === 'receipt' && batchInput"><label class="info-row"><span>生产日期</span><input v-model="productionDate" :disabled="pendingScans > 0" type="date" /></label><label class="info-row"><span>到期日期</span><input v-model="expirationDate" :disabled="pendingScans > 0" type="date" /></label></template>
+      <label v-if="tab === 'shipment'" class="info-row"><span>批次号</span><input v-model="batchInput" :disabled="pendingScans > 0" placeholder="选填" /></label>
       <div class="item-actions"><button type="button" class="item-action" @click="openSkuPicker"><Icon icon="ep:goods" :size="26" /><strong>选择物品</strong></button><ScanButton variant="card" label="连续扫码" continuous @scan="queueReceiptScan" /></div>
       <form class="search manual-scan" @submit.prevent="queueReceiptScan(receiptScan)"><input v-model="receiptScan" placeholder="扫码枪输入或手动输入物品条码" /><button>添加</button></form><p v-if="pendingScans">正在处理 {{ pendingScans }} 条扫码</p></div>
       <el-dialog v-model="skuPickerOpen" title="选择物品" width="min(520px, 95vw)" append-to-body>
@@ -504,7 +520,14 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
         </div>
         <div class="pagination"><button :disabled="skuPage === 1" @click="skuPage--; loadSkus()">上一页</button><span>{{ skuPage }} / {{ Math.max(1, Math.ceil(skuTotal / 20)) }}</span><button :disabled="skuPage * 20 >= skuTotal" @click="skuPage++; loadSkus()">下一页</button></div>
       </el-dialog>
-      <article v-for="(row, index) in receiptRows" :key="row.rowId"><strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong><p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p><el-input-number v-model="row.quantity" :disabled="!!row.serialNos?.length" :min="0.01" :max="row.available" :precision="QUANTITY_PRECISION" /><ArrivalSelect v-if="tab === 'shipment'" :model-value="row.arrivalId" @update:model-value="selectRowArrival(row, $event)" :warehouse-id="warehouseId" :sku-id="row.sku.id" :location-id="row.locationId" :batch-no="row.batchNo" /><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /><details v-if="tab === 'receipt'"><summary>到货信息</summary><div class="arrival-grid"><label v-for="field in arrivalFields" :key="field.key">{{ field.label }}<input v-if="field.text" v-model="row[field.key]" maxlength="64" :placeholder="field.label" /><input v-else v-model.number="row[field.key]" type="number" min="0" step="any" :placeholder="field.label" /></label></div></details><button class="back" @click="receiptRows.push({ ...row, rowId: ++nextReceiptRowId, quantity: 1, serialNos: [], arrivalId: undefined, available: undefined, palletNo: undefined, boxNo: undefined, rollNo: undefined })">复制为新明细</button><button class="back" @click="receiptRows.splice(index, 1)">删除</button></article>
+      <article v-for="(row, index) in receiptRows" :key="row.rowId" class="receipt-row">
+        <strong>{{ row.sku.itemName }} {{ row.sku.name }}</strong>
+        <p>{{ row.sku.code }} · {{ row.locationName || '未分配库位' }} · {{ row.batchNo || '未分配批次' }}</p>
+        <div class="quantity-row"><span>数量</span><div class="quantity-control"><button type="button" :disabled="!!row.serialNos?.length || row.quantity <= 1" @click="row.quantity = Number((row.quantity - 1).toFixed(2))">−</button><input v-model.number="row.quantity" type="number" min="0.01" step="any" :disabled="!!row.serialNos?.length" /><button type="button" :disabled="!!row.serialNos?.length || (row.available !== undefined && row.quantity + 1 > row.available)" @click="row.quantity = Number((row.quantity + 1).toFixed(2))">＋</button></div><SerialEditor :model-value="row.serialNos" @update:model-value="row.serialNos = $event || []; if (row.serialNos.length) row.quantity = row.serialNos.length" /></div>
+        <ArrivalSelect v-if="tab === 'shipment'" :model-value="row.arrivalId" @update:model-value="selectRowArrival(row, $event)" :warehouse-id="warehouseId" :sku-id="row.sku.id" :location-id="row.locationId" :batch-no="row.batchNo" />
+        <details v-if="tab === 'receipt'" class="arrival-details"><summary>到货信息</summary><div class="arrival-grid"><label>批次号<input v-model="row.batchNo" maxlength="64" placeholder="选填" /></label><label>生产日期<input type="date" :value="dateValue(row.productionDate)" @input="row.productionDate = dateMillis($event)" /></label><label>到期日期<input type="date" :value="dateValue(row.expirationDate)" @input="row.expirationDate = dateMillis($event)" /></label><label v-for="field in arrivalFields" :key="field.key">{{ field.label }}<input v-if="field.text" v-model="row[field.key]" maxlength="64" :placeholder="field.label" /><input v-else v-model.number="row[field.key]" type="number" min="0" step="any" :placeholder="field.label" /></label></div></details>
+        <div class="row-actions"><button class="back" @click="receiptRows.push({ ...row, rowId: ++nextReceiptRowId, quantity: 1, serialNos: [], arrivalId: undefined, available: undefined, palletNo: undefined, boxNo: undefined, rollNo: undefined })">复制明细</button><button class="back" @click="receiptRows.splice(index, 1)">删除</button></div>
+      </article>
       <div class="receipt-save"><span>共 {{ receiptRows.length }} 条明细</span><button class="primary" :disabled="savingReceipt || pendingScans > 0" @click="saveReceipt">保存草稿</button></div>
     </section>
     <CheckCreate v-else-if="creatingCheck && warehouseId" :warehouse-id="warehouseId" @close="cancelCheck" @saved="creatingCheck = false; load()" />
@@ -512,9 +535,9 @@ onMounted(async () => { approvalEnabled.value = (await ApprovalApi.config()).ena
     <template v-else-if="!selected">
       <section class="work-section warehouse-section"><div class="section-heading"><h2>仓库</h2></div>
       <template v-if="!warehouseId">
-        <ScanButton class="warehouse-scan" label="扫码选择仓库" @scan="(value) => { warehouseCode = value; selectWarehouse() }" />
-        <form class="search warehouse-input" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="输入仓库编号" /><button type="submit">选择仓库</button></form>
-        <button class="warehouse-list-button" type="button" @click="showWarehouseChoices ? showWarehouseChoices = false : chooseWarehouse()">{{ showWarehouseChoices ? '收起仓库列表' : '从列表选择仓库' }} <span>{{ showWarehouseChoices ? '⌃' : '›' }}</span></button>
+        <div class="method-row"><span>方式一</span><ScanButton label="扫码选择仓库" @scan="(value) => { warehouseCode = value; selectWarehouse() }" /></div>
+        <div class="method-row"><span>方式二</span><form class="search warehouse-input" @submit.prevent="selectWarehouse"><input v-model="warehouseCode" placeholder="输入仓库编号" /><button type="submit">选择仓库</button></form></div>
+        <div class="method-row"><span>方式三</span><button class="warehouse-list-button" type="button" @click="showWarehouseChoices ? showWarehouseChoices = false : chooseWarehouse()">{{ showWarehouseChoices ? '收起仓库列表' : '从列表选择仓库' }} <span>{{ showWarehouseChoices ? '⌃' : '›' }}</span></button></div>
         <div v-if="showWarehouseChoices" class="warehouse-choices"><button v-for="warehouse in warehouseChoices" :key="warehouse.id" @click="applyWarehouse(warehouse)">{{ warehouse.name }}（{{ warehouse.code }}）</button><span v-if="!warehouseChoices.length">暂无仓库</span></div>
       </template>
       <template v-else>
@@ -626,4 +649,20 @@ nav:not(.bottom-nav) .active { background: #2461ee; box-shadow: 0 5px 12px #245e
 .receipt-info .location-search { padding: 14px 0 0; gap: 6px; }
 .receipt-info .location-search input { flex: 1; width: 0; max-width: none; border: 1px solid #dce5f1; background: #fff; }
 .receipt-info .location-search button:not(.scan-trigger) { padding: 10px; white-space: nowrap; }
+.pda > header .header-home { padding: 8px 0; background: transparent; color: #245eea; font-size: 16px; font-weight: 600; }
+.method-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.method-row > span { flex: none; width: 48px; color: #718198; font-size: 13px; }
+.method-row :deep(.scan-trigger), .method-row :deep(.el-select), .method-row form, .method-row .warehouse-list-button { flex: 1; min-width: 0; width: 100%; margin: 0; }
+.method-row .search { padding: 0; }.method-row .search input { width: 0; max-width: none; }
+.method-row .search button { white-space: nowrap; padding: 10px 12px; }
+.place-group { padding-top: 16px; }.place-group + .place-group { margin-top: 16px; border-top: 1px solid #edf1f6; }
+.place-group h4 { margin: 0; color: #243752; font-size: 15px; }.place-input :deep(.el-select) { width: 100%; }
+.receipt-row .quantity-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.quantity-row > span { color: #61728a; font-size: 14px; }.quantity-control { display: flex; align-items: stretch; height: 42px; border: 1px solid #dce5f1; border-radius: 10px; overflow: hidden; }
+.quantity-control button { width: 42px; background: #f4f7fb; color: #245eea; font-size: 20px; }.quantity-control button:disabled { color: #b5c0ce; }
+.quantity-control input { width: 74px; min-width: 0; border: 0; text-align: center; font-size: 16px; appearance: textfield; }.quantity-control input::-webkit-inner-spin-button { appearance: none; }
+.arrival-details { border-top: 1px solid #edf1f6; padding-top: 14px; }.arrival-details summary { color: #245eea; cursor: pointer; font-weight: 600; }.row-actions { display: flex; gap: 8px; margin-top: 16px; }
+@media (pointer: fine) { .scroll-indicator { display: none; } }
+@media (pointer: coarse) { :global(html.pda-scroll-page) { scrollbar-width: none; } :global(html.pda-scroll-page::-webkit-scrollbar) { display: none; } }
+@media (max-width: 768px) { .pda input, .pda select, .pda textarea, .pda :deep(input), .pda :deep(textarea), :global(.el-dialog input), :global(.el-dialog textarea) { font-size: 16px !important; } }
 </style>
