@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import ScanButton from './ScanButton.vue'
+import SkuPicker from './SkuPicker.vue'
+import type { ItemSkuVO } from '@/api/wms/md/item/sku'
 import PlacePicker from './PlacePicker.vue'
 import request from '@/config/axios'
 import { InventoryApi } from '@/api/wms/inventory'
@@ -12,6 +14,7 @@ const props = defineProps<{ warehouseId: number; order?: any }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const code = ref(''), sku = ref<any>(), inventory = ref<any>(), balances = ref<ArrivalBalance[]>([]), selected = ref<number>(), actual = ref(0), bookSerials = ref<string[]>([]), actualSerials = ref<string[]>([]), loading = ref(false)
 const details = ref<any[]>([])
+const pickerOpen = ref(false)
 onMounted(() => {
   if (props.order) details.value = (props.order.details || []).map((item: any) => ({ ...item, arrivalId: item.arrivalId ?? 0, bookSerialNos: item.bookSerialNos || [], actualSerialNos: item.actualSerialNos || [], label: `${item.itemName || ''} ${item.skuName || ''}` }))
 })
@@ -22,10 +25,10 @@ let findRequestId = 0
 const serialLoading = ref(false)
 const serialReady = ref(false)
 const setLocationFilter = (value?: number) => { locationFilter.value = value; selected.value = undefined; serialRequestId++; serialLoading.value = false; serialReady.value = false }
-const find = async () => {
+const find = async (picked?: ItemSkuVO) => {
   const findId = ++findRequestId; serialRequestId++; serialLoading.value = false; serialReady.value = false
   sku.value = undefined; inventory.value = undefined; balances.value = []; selected.value = undefined; locationFilter.value = undefined
-  const found = await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } })
+  const found = picked ? [picked] : await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } })
   if (findId !== findRequestId) return
   if (found.length !== 1) { ElMessage.warning('未找到唯一物品规格'); return }
   sku.value = found[0]; selected.value = undefined; bookSerials.value = []; actualSerials.value = []
@@ -66,7 +69,7 @@ const submit = async () => {
 }
 </script>
 <template>
-  <section class="check-create"><button class="back" @click="emit('close')">‹ 返回</button><h2>{{ order ? '修改' : '新建' }}盘点草稿</h2><div class="scan-panel"><p>选择物品</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
+  <section class="check-create"><button class="back" @click="emit('close')">‹ 返回</button><h2>{{ order ? '修改' : '新建' }}盘点草稿</h2><div class="scan-panel"><p>选择物品</p><form @submit.prevent="find()"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><div class="picker-actions"><ScanButton @scan="(value: string) => { code = value; find() }" /><el-button @click="pickerOpen = true">选择物品</el-button></div><SkuPicker v-model="pickerOpen" @select="find" /></div>
     <div v-if="sku && balances.length" class="detail-panel"><p>盘点信息 · {{ sku.itemName }} {{ sku.name }}</p><p>按位置筛选（可选）</p><PlacePicker :model-value="locationFilter" :warehouse-id="warehouseId" @update:model-value="setLocationFilter" /><p>选择账面库存（库位／批次／到货）</p><el-select v-model="selected" placeholder="请选择" @change="choose"><el-option v-for="{ balance: b, index } in balanceOptions" :key="index" :value="index" :label="`库位 ${b.locationId ?? '未分配'} · 批次 ${b.batchNo || '未分配'} · 到货 ${b.arrivalId ?? '历史未分配'} · ${b.quantity}`" /></el-select>
     <template v-if="selected !== undefined"><p>账面数量：{{ balances[selected].quantity }}</p><p>实盘数量</p><el-input-number v-model="actual" :min="0" :precision="2" /><p>实盘序列号</p><SerialEditor v-model="actualSerials" /></template></div>
     <p class="action-row"><el-button class="add-action" @click="save">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; serialRequestId++; serialReady = false">取消当前物品</el-button></p><h3 v-if="details.length">盘点明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.label }}</strong><p>账面数量 {{ item.quantity }}</p><p>实盘数量</p><el-input-number v-model="item.checkQuantity" :min="0" :precision="2" :controls="false" /><p>实盘序列号 <SerialEditor v-model="item.actualSerialNos" /></p><el-button link type="danger" @click="details.splice(index, 1)">删除明细</el-button></article><p class="save-row"><el-button type="primary" :loading="loading" @click="submit">保存草稿</el-button></p></section>
@@ -84,6 +87,7 @@ article p { font-weight: normal; }
 .scan-panel, .detail-panel { margin: 14px 0; padding: 18px; background: #fff; border: 1px solid #e9eef7; border-radius: 18px; box-shadow: 0 8px 24px rgba(30, 59, 100, .06); }
 .scan-panel p:first-child, .detail-panel p:first-child { margin-top: 0; color: #182b47; font-size: 16px; }
 .scan-panel form { margin-bottom: 8px; }
+.picker-actions { display:flex; gap:8px; }.picker-actions > * { flex:1; }
 .scan-panel :deep(.el-button), .detail-panel :deep(.el-button) { min-height: 44px; border-radius: 10px; }
 :deep(.el-button--primary) { min-height: 46px; border-radius: 11px; font-weight: 650; }
 article { border: 1px solid #e8eef8; color: #243854; line-height: 1.6; }

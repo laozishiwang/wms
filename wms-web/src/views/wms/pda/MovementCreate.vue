@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import ScanButton from './ScanButton.vue'
+import SkuPicker from './SkuPicker.vue'
 import { MovementOrderApi } from '@/api/wms/order/movement'
 import { WarehouseApi, type WarehouseVO } from '@/api/wms/md/warehouse'
 import request from '@/config/axios'
@@ -16,6 +17,7 @@ const emit = defineEmits<{ close: []; saved: [] }>()
 const warehouses = ref<WarehouseVO[]>([])
 const target = ref<number>(props.sourceWarehouseId)
 const code = ref('')
+const pickerOpen = ref(false)
 const sku = ref<ItemSkuVO>()
 const row = reactive<any>({ quantity: 1, serialNos: [] })
 const loading = ref(false)
@@ -29,11 +31,11 @@ onMounted(async () => {
   }
 })
 let findRequestId = 0
-const find = async () => {
+const find = async (picked?: ItemSkuVO) => {
   const requestId = ++findRequestId
   sku.value = undefined
   Object.assign(row, { batchNo: undefined, sourceLocationId: undefined, targetLocationId: undefined, arrivalId: undefined, quantity: 1, serialNos: [] })
-  const found: ItemSkuVO[] = await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } })
+  const found: ItemSkuVO[] = picked ? [picked] : await request.get({ url: '/wms/item-sku/exact', params: { value: code.value.trim() } })
   if (requestId !== findRequestId) return
   if (found.length !== 1) { ElMessage.warning('未找到唯一物品规格'); return }
   sku.value = found[0]
@@ -66,7 +68,7 @@ const save = async () => {
   <section class="movement-create">
     <button class="back" @click="emit('close')">‹ 返回</button><h2>{{ order ? '修改' : '新建' }}移库草稿</h2>
     <div class="detail-panel"><p>目标仓库</p><el-select v-model="target" :disabled="details.length > 0"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select></div>
-    <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><ScanButton @scan="(value: string) => { code = value; find() }" /></div>
+    <div class="scan-panel"><p>选择物品</p><form @submit.prevent="find()"><el-input v-model="code" placeholder="扫描或输入规格编号" /><el-button native-type="submit">查找</el-button></form><div class="picker-actions"><ScanButton @scan="(value: string) => { code = value; find() }" /><el-button @click="pickerOpen = true">选择物品</el-button></div><SkuPicker v-model="pickerOpen" @select="find" /></div>
     <div v-if="sku" class="detail-panel"><p>移库信息 · {{ sku.name }}（{{ sku.code }}）</p>
       <p>批次</p><BatchSelect v-model="row.batchNo" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" @update:model-value="row.sourceLocationId = undefined; row.arrivalId = undefined" />
       <p>来源位置</p><PlacePicker v-model="row.sourceLocationId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :batch-no="row.batchNo" stock-only @update:model-value="row.arrivalId = undefined" />
@@ -92,6 +94,7 @@ article p { font-weight: normal; }
 .scan-panel, .detail-panel { margin: 14px 0; padding: 18px; background: #fff; border: 1px solid #e9eef7; border-radius: 18px; box-shadow: 0 8px 24px rgba(30, 59, 100, .06); }
 .scan-panel p:first-child, .detail-panel p:first-child { margin-top: 0; color: #182b47; font-size: 16px; }
 .scan-panel form { margin-bottom: 8px; }
+.picker-actions { display:flex; gap:8px; }.picker-actions > * { flex:1; }
 .scan-panel :deep(.el-button), .detail-panel :deep(.el-button) { min-height: 44px; border-radius: 10px; }
 :deep(.el-button--primary) { min-height: 46px; border-radius: 11px; font-weight: 650; }
 article { border: 1px solid #e8eef8; color: #243854; line-height: 1.6; }
