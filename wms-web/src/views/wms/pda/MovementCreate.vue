@@ -72,7 +72,7 @@ const save = async () => {
       <p>来源位置</p><PlacePicker v-model="row.sourceLocationId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :batch-no="row.batchNo" stock-only @update:model-value="row.arrivalId = undefined" />
       <p>到货记录</p><ArrivalSelect v-model="row.arrivalId" :warehouse-id="sourceWarehouseId" :sku-id="sku.id" :location-id="row.sourceLocationId" :batch-no="row.batchNo" />
       <p>目标位置</p><PlacePicker v-model="row.targetLocationId" :warehouse-id="target" />
-      <p>数量</p><el-input-number v-model="row.quantity" :min="0.001" :precision="3" />
+      <p>数量</p><el-input-number v-model="row.quantity" :min="0.01" :precision="2" />
       <p>序列号</p><SerialEditor v-model="row.serialNos" />
     </div><p class="action-row"><el-button class="add-action" :disabled="!sku" @click="add">添加明细</el-button><el-button v-if="sku" @click="sku = undefined; code = ''">取消当前物品</el-button></p>
     <h3 v-if="details.length">移库明细</h3><article v-for="(item, index) in details" :key="index"><strong>{{ item.skuLabel }}</strong><p>批次：{{ item.batchNo || '未分配' }} · 到货：{{ item.arrivalId }}</p><p>库位：{{ item.sourceLocationId ?? '未分配' }} → {{ item.targetLocationId ?? '未分配' }}</p><p>数量</p><el-input-number v-model="item.quantity" :min="0.01" :precision="2" :controls="false" /><p>单价</p><el-input-number v-model="item.price" :min="0" :precision="2" :controls="false" /><p>序列号 <SerialEditor v-model="item.serialNos" /></p><el-button link type="danger" @click="details.splice(index, 1)">删除明细</el-button></article>
